@@ -1,4 +1,4 @@
-const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { EmbedBuilder } = require('discord.js');
 
 const TIER_LABELS = {
   none: 'Keine',
@@ -6,19 +6,41 @@ const TIER_LABELS = {
   ehrenmitglied: 'Ehrenmitglied',
 };
 
-function buildDetailsText(summary) {
-  if (!summary.details.length) return 'Keine Spieler mit Spielzeit-Daten gefunden.';
-  return summary.details
-    .map((d) => `${d.tag.padEnd(32, ' ')} ${d.hours.toFixed(1).padStart(8, ' ')}h  ${TIER_LABELS[d.tier]}`)
-    .join('\n');
+const MAX_CHUNK_LENGTH = 1900;
+
+function buildDetailLines(summary) {
+  if (!summary.details.length) return ['Keine Spieler mit Spielzeit-Daten gefunden.'];
+  return summary.details.map(
+    (d) => `${d.tag.padEnd(32, ' ')} ${d.hours.toFixed(1).padStart(8, ' ')}h  ${TIER_LABELS[d.tier]}`
+  );
+}
+
+function chunkLines(lines, maxLength = MAX_CHUNK_LENGTH) {
+  const chunks = [];
+  let current = [];
+  let currentLength = 0;
+
+  for (const line of lines) {
+    const lineLength = line.length + 1;
+    if (currentLength + lineLength > maxLength && current.length) {
+      chunks.push(current.join('\n'));
+      current = [];
+      currentLength = 0;
+    }
+    current.push(line);
+    currentLength += lineLength;
+  }
+  if (current.length) chunks.push(current.join('\n'));
+
+  return chunks;
 }
 
 /**
- * Postet nach jedem Sync (automatisch oder manuell) eine Zusammenfassung in
- * den konfigurierten Log-Channel: wie viele Spieler ausgelesen wurden, welche
- * Spieler das im Detail sind (als Textdatei-Anhang, damit auch grosse Listen
- * die Discord-Nachrichtenlaenge nicht sprengen) und welche Rollenaenderungen
- * vorgenommen wurden.
+ * Postet nach jedem Sync (automatisch oder manuell) in den konfigurierten
+ * Log-Channel: eine Zusammenfassung (Embed) sowie die vollstaendige, aktuelle
+ * Liste aller ausgelesenen Spieler samt Spielzeit als normale Textnachricht(en).
+ * Bei vielen Spielern wird die Liste auf mehrere Nachrichten aufgeteilt, um
+ * das Discord-Nachrichtenlimit von 2000 Zeichen nicht zu sprengen.
  */
 async function postSyncLog(client, config, summary, reason) {
   if (!config.logChannelId) return;
@@ -53,13 +75,16 @@ async function postSyncLog(client, config, summary, reason) {
     });
   }
 
-  const attachment = new AttachmentBuilder(Buffer.from(buildDetailsText(summary), 'utf8'), {
-    name: 'ausgelesene-spieler.txt',
-  });
-
-  await channel.send({ embeds: [embed], files: [attachment] }).catch((err) => {
+  await channel.send({ embeds: [embed] }).catch((err) => {
     console.error('[sync] Konnte Log-Nachricht nicht senden:', err);
   });
+
+  const chunks = chunkLines(buildDetailLines(summary));
+  for (const chunk of chunks) {
+    await channel.send({ content: '```\n' + chunk + '\n```' }).catch((err) => {
+      console.error('[sync] Konnte Spielerliste nicht senden:', err);
+    });
+  }
 }
 
-module.exports = { postSyncLog, buildDetailsText };
+module.exports = { postSyncLog, buildDetailLines };

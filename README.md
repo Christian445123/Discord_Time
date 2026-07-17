@@ -96,8 +96,10 @@ Nach **jedem** Sync — egal ob automatisch (alle `SYNC_INTERVAL_MINUTES`) oder
 manuell per `/synctime` — postet der Bot in `LOG_CHANNEL_ID`:
 
 - eine kurze Zusammenfassung (gepruefte Mitglieder, Mitglieder mit Spielzeit-Daten, Rollenaenderungen, ggf. Fehler)
-- eine Textdatei `ausgelesene-spieler.txt` mit der vollstaendigen, aktuellen Liste
-  aller ausgelesenen Spieler samt Stunden und aktueller Stufe
+- eine oder mehrere Textnachrichten mit der vollstaendigen, aktuellen Liste
+  aller ausgelesenen Spieler samt Stunden und aktueller Stufe (bei vielen
+  Spielern automatisch auf mehrere Nachrichten aufgeteilt, wegen des
+  2000-Zeichen-Limits von Discord)
 
 So ist immer nachvollziehbar, welche Spieler beim letzten Durchlauf erfasst wurden.
 
