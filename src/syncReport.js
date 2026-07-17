@@ -67,12 +67,40 @@ function buildSummaryEmbed(summary, reason, durationMs) {
       { name: 'Mit Spielzeit-Daten', value: String(summary.withData), inline: true },
       { name: 'Rollenaenderungen', value: String(summary.updated), inline: true },
       { name: 'Fehler', value: String(summary.errors.length), inline: true },
+      { name: '🎮 Aktive Spieler', value: String(summary.activePlayers.length), inline: true },
       { name: 'Dauer', value: formatDuration(durationMs), inline: true },
       { name: '⏱️ Neue Spielzeit insgesamt', value: `**${summary.totalDeltaHours.toFixed(1)}h** seit letztem Sync`, inline: true }
     )
     .setTimestamp(new Date());
 
   return embed;
+}
+
+/**
+ * Baut Embeds fuer die Spieler, deren Spielzeit sich seit dem letzten Sync
+ * tatsaechlich erhoeht hat - also alle, die zwischen den beiden Durchlaeufen
+ * aktiv auf dem Server gespielt haben. Sortiert nach groesstem Zuwachs zuerst.
+ */
+function buildActivePlayerEmbeds(summary) {
+  if (!summary.activePlayers.length) return [];
+
+  const embeds = [];
+  for (let i = 0; i < summary.activePlayers.length; i += FIELDS_PER_EMBED) {
+    const chunk = summary.activePlayers.slice(i, i + FIELDS_PER_EMBED);
+    const embed = new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle(i === 0 ? '🎮 Aktive Spieler seit dem letzten Sync' : '🎮 Aktive Spieler (Fortsetzung)');
+
+    for (const d of chunk) {
+      embed.addFields({
+        name: `${d.tag} — ${TIER_LABELS[d.tier]}`,
+        value: `**+${d.deltaHours.toFixed(1)}h** dazugekommen\n(jetzt ${d.hours.toFixed(1)}h gesamt)`,
+        inline: true,
+      });
+    }
+    embeds.push(embed);
+  }
+  return embeds;
 }
 
 function buildPlayerEmbeds(summary) {
@@ -115,10 +143,11 @@ async function sendEmbedBatches(channel, embeds, errorLabel) {
 /**
  * Postet nach jedem Sync (automatisch oder manuell) ein vollstaendiges Log in
  * den konfigurierten Log-Channel: Zusammenfassung, Setup-Probleme (falls
- * vorhanden), ALLE Rollen-Aenderungen, ALLE Fehler und die komplette Liste
- * aller ausgelesenen Spieler samt Spielzeit und Zuwachs seit dem letzten
- * Durchlauf. Nichts wird gekuerzt - bei Bedarf wird auf mehrere Nachrichten
- * aufgeteilt.
+ * vorhanden), ALLE Rollen-Aenderungen, ALLE Fehler, die Liste der Spieler,
+ * deren Zeit sich seit dem letzten Sync veraendert hat (also wer aktiv war),
+ * und die komplette Liste aller ausgelesenen Spieler samt Spielzeit und
+ * Zuwachs seit dem letzten Durchlauf. Nichts wird gekuerzt - bei Bedarf wird
+ * auf mehrere Nachrichten aufgeteilt.
  */
 async function postSyncLog(client, config, summary, reason, durationMs) {
   if (!config.logChannelId) return;
@@ -145,6 +174,7 @@ async function postSyncLog(client, config, summary, reason, durationMs) {
     await sendEmbedBatches(channel, errorEmbeds, 'Fehler-Liste');
   }
 
+  await sendEmbedBatches(channel, buildActivePlayerEmbeds(summary), 'Liste aktiver Spieler');
   await sendEmbedBatches(channel, buildPlayerEmbeds(summary), 'Spielerliste');
 }
 

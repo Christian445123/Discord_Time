@@ -165,6 +165,11 @@ async function syncGuildRoles(guild, config) {
   }
 
   summary.details.sort((a, b) => b.hours - a.hours);
+
+  summary.activePlayers = summary.details
+    .filter((d) => typeof d.deltaHours === 'number' && d.deltaHours > 0)
+    .sort((a, b) => b.deltaHours - a.deltaHours);
+
   saveLastHours(currentHours);
 
   return summary;

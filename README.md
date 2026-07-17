@@ -105,7 +105,12 @@ bei Bedarf auf mehrere Nachrichten aufgeteilt) in `LOG_CHANNEL_ID`:
    bekommen/verloren)
 4. **alle** aufgetretenen Fehler (z.B. wenn eine Rolle bei einem einzelnen
    Mitglied nicht vergeben werden konnte)
-5. die vollstaendige, aktuelle Liste aller ausgelesenen Spieler: Spielzeit
+5. **🎮 Aktive Spieler seit dem letzten Sync**: alle Spieler, deren Spielzeit
+   sich seit dem letzten Durchlauf tatsaechlich erhoeht hat, sortiert nach
+   groesstem Zuwachs zuerst - so seht ihr auf einen Blick, wer aktiv dabei ist
+   und Zeiten sammelt (wer nicht in dieser Liste steht, hat seit dem letzten
+   Sync nicht gespielt)
+6. die vollstaendige, aktuelle Liste aller ausgelesenen Spieler: Spielzeit
    gesamt und individueller Zuwachs seit dem letzten Sync-Durchlauf je Spieler
 
 Die Vergleichswerte fuer den Zuwachs werden in `data/lastSync.json` gespeichert.
