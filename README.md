@@ -93,18 +93,42 @@ automatisch alle `SYNC_INTERVAL_MINUTES` Minuten.
 ## Log-Channel
 
 Nach **jedem** Sync — egal ob automatisch (alle `SYNC_INTERVAL_MINUTES`) oder
-manuell per `/synctime` — postet der Bot in `LOG_CHANNEL_ID`:
+manuell per `/synctime` — postet der Bot vollstaendig (nichts wird gekuerzt,
+bei Bedarf auf mehrere Nachrichten aufgeteilt) in `LOG_CHANNEL_ID`:
 
-- eine Zusammenfassung als Embed (gepruefte Mitglieder, Mitglieder mit
-  Spielzeit-Daten, Rollenaenderungen, Dauer des Sync-Durchlaufs, insgesamt seit
-  dem letzten Sync neu hinzugekommene Spielzeit, ggf. Fehler)
-- ein oder mehrere Embeds mit der vollstaendigen, aktuellen Liste aller
-  ausgelesenen Spieler: Spielzeit gesamt und individueller Zuwachs seit dem
-  letzten Sync-Durchlauf je Spieler (automatisch auf mehrere Embeds/Nachrichten
-  aufgeteilt, sobald mehr als 25 Spieler bzw. mehr als 10 Embeds anfallen)
+1. eine Zusammenfassung als Embed (gepruefte Mitglieder, Mitglieder mit
+   Spielzeit-Daten, Anzahl Rollenaenderungen/Fehler, Dauer des Sync-Durchlaufs,
+   insgesamt seit dem letzten Sync neu hinzugekommene Spielzeit)
+2. falls vorhanden: alle erkannten Setup-Probleme (siehe unten)
+3. **alle** Rollen-Aenderungen dieses Durchlaufs (wer hat welche Rolle
+   bekommen/verloren)
+4. **alle** aufgetretenen Fehler (z.B. wenn eine Rolle bei einem einzelnen
+   Mitglied nicht vergeben werden konnte)
+5. die vollstaendige, aktuelle Liste aller ausgelesenen Spieler: Spielzeit
+   gesamt und individueller Zuwachs seit dem letzten Sync-Durchlauf je Spieler
 
 Die Vergleichswerte fuer den Zuwachs werden in `data/lastSync.json` gespeichert.
 Beim allerersten Sync gibt es noch keine Vergleichsbasis ("erster Sync").
+
+### Wenn Rollen nicht vergeben werden
+
+Der Bot prueft bei jedem Sync automatisch die haeufigsten Ursachen dafuer, dass
+Rollen nicht vergeben werden koennen, und zeigt sie oben in der Zusammenfassung
+als **"⚠️ Der Bot kann Rollen (teilweise) nicht vergeben"** an:
+
+- Die Rolle mit der konfigurierten `ROLE_STAMMSPIELER_ID` / `ROLE_EHRENMITGLIED_ID` existiert nicht (mehr) auf dem Server.
+- Dem Bot fehlt die Berechtigung "Rollen verwalten".
+- **Am haeufigsten**: Die eigene Rolle des Bots steht in der Server-Rollen-Hierarchie
+  nicht **oberhalb** von Stammspieler/Ehrenmitglied. Discord erlaubt es Bots
+  grundsaetzlich nicht, Rollen zu vergeben, die auf gleicher Hoehe oder hoeher
+  stehen als ihre eigene hoechste Rolle. Beheben: Server-Einstellungen ->
+  Rollen -> die Bot-Rolle per Drag&Drop **ueber** Stammspieler und Ehrenmitglied
+  ziehen.
+
+Falls trotzdem ein einzelner Spieler keine Rolle bekommt, obwohl er/sie genug
+Stunden hat: mit `/playtime @spieler` pruefen, welche Spielzeit der Bot fuer
+diese Person tatsaechlich ausliest (haeufigster Grund: der Discord-Account ist
+in txAdmin nicht mit dem Spieler verknuepft — dann hilft `/link`).
 
 So ist immer nachvollziehbar, welche Spieler beim letzten Durchlauf erfasst wurden.
 

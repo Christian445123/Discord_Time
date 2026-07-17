@@ -1,3 +1,4 @@
+const { PermissionFlagsBits } = require('discord.js');
 const { loadPlaytimeData } = require('./playtimeStore');
 const { getLink } = require('./linkStore');
 const { loadLastHours, saveLastHours } = require('./syncHistory');
@@ -29,6 +30,51 @@ function resolveMinutesForMember(discordId, playtimeData) {
     return playtimeData.byLicense.get(linkedLicense);
   }
   return null;
+}
+
+/**
+ * Prueft die haeufigsten Gruende, warum der Bot Rollen NICHT vergeben kann,
+ * bevor ueberhaupt ein Mitglied durchgegangen wird: Rolle existiert nicht
+ * (mehr), Bot hat keine "Rollen verwalten"-Berechtigung, oder die Bot-Rolle
+ * steht in der Rollen-Hierarchie nicht oberhalb der Ziel-Rolle (Discord
+ * erlaubt es Bots grundsaetzlich nicht, Rollen zu vergeben, die gleich hoch
+ * oder hoeher stehen als ihre eigene hoechste Rolle).
+ */
+function checkRoleSetup(guild, config) {
+  const issues = [];
+  const stammRole = guild.roles.cache.get(config.roleStammspielerId);
+  const ehrenRole = guild.roles.cache.get(config.roleEhrenmitgliedId);
+
+  if (!stammRole) {
+    issues.push(`Rolle fuer ROLE_STAMMSPIELER_ID (${config.roleStammspielerId}) existiert auf diesem Server nicht.`);
+  }
+  if (!ehrenRole) {
+    issues.push(`Rolle fuer ROLE_EHRENMITGLIED_ID (${config.roleEhrenmitgliedId}) existiert auf diesem Server nicht.`);
+  }
+
+  const botMember = guild.members.me;
+  if (!botMember) {
+    issues.push('Konnte das eigene Bot-Mitglied auf dem Server nicht ermitteln.');
+    return issues;
+  }
+
+  if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
+    issues.push('Dem Bot fehlt die Berechtigung "Rollen verwalten" (Manage Roles).');
+  }
+
+  const botHighest = botMember.roles.highest;
+  if (stammRole && botHighest.comparePositionTo(stammRole) <= 0) {
+    issues.push(
+      `Die hoechste Bot-Rolle ("${botHighest.name}") steht in der Rollen-Hierarchie nicht oberhalb von "${stammRole.name}" - der Bot kann diese Rolle daher nicht vergeben. Bot-Rolle in den Server-Einstellungen weiter nach oben ziehen.`
+    );
+  }
+  if (ehrenRole && botHighest.comparePositionTo(ehrenRole) <= 0) {
+    issues.push(
+      `Die hoechste Bot-Rolle ("${botHighest.name}") steht in der Rollen-Hierarchie nicht oberhalb von "${ehrenRole.name}" - der Bot kann diese Rolle daher nicht vergeben. Bot-Rolle in den Server-Einstellungen weiter nach oben ziehen.`
+    );
+  }
+
+  return issues;
 }
 
 /**
@@ -64,7 +110,10 @@ async function syncGuildRoles(guild, config) {
     changes: [],
     details: [],
     totalDeltaHours: 0,
+    setupIssues: checkRoleSetup(guild, config),
   };
+
+  for (const issue of summary.setupIssues) console.warn(`[sync] Setup-Problem: ${issue}`);
 
   for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;

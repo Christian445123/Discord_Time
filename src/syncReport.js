@@ -8,6 +8,7 @@ const TIER_LABELS = {
 
 const FIELDS_PER_EMBED = 25;
 const EMBEDS_PER_MESSAGE = 10;
+const MAX_DESCRIPTION_LENGTH = 3900;
 
 function formatDuration(durationMs) {
   if (typeof durationMs !== 'number') return 'unbekannt';
@@ -21,35 +22,55 @@ function formatDelta(deltaHours) {
   return `${sign}${deltaHours.toFixed(1)}h seit letztem Sync`;
 }
 
+/**
+ * Teilt eine Liste von Zeilen in mehrere Embeds auf, sodass weder das
+ * Discord-Limit fuer Embed-Beschreibungen (4096 Zeichen) noch das Limit fuer
+ * Embeds pro Nachricht (10) gesprengt wird. Damit werden Aenderungen und
+ * Fehler IMMER vollstaendig geloggt, egal wie viele es sind.
+ */
+function buildListEmbeds(title, lines, color) {
+  if (!lines.length) return [];
+
+  const chunks = [];
+  let current = [];
+  let currentLength = 0;
+
+  for (const line of lines) {
+    const lineLength = line.length + 1;
+    if (currentLength + lineLength > MAX_DESCRIPTION_LENGTH && current.length) {
+      chunks.push(current.join('\n'));
+      current = [];
+      currentLength = 0;
+    }
+    current.push(line);
+    currentLength += lineLength;
+  }
+  if (current.length) chunks.push(current.join('\n'));
+
+  return chunks.map((chunk, i) =>
+    new EmbedBuilder()
+      .setColor(color)
+      .setTitle(i === 0 ? title : `${title} (Fortsetzung)`)
+      .setDescription(chunk)
+  );
+}
+
 function buildSummaryEmbed(summary, reason, durationMs) {
+  const hasSetupIssues = summary.setupIssues.length > 0;
+
   const embed = new EmbedBuilder()
-    .setTitle('Spielzeit-Sync')
-    .setColor(summary.errors.length ? 0xe67e22 : 0x2ecc71)
+    .setTitle(hasSetupIssues ? '⚠️ Spielzeit-Sync (Setup-Problem!)' : 'Spielzeit-Sync')
+    .setColor(hasSetupIssues ? 0xe74c3c : summary.errors.length ? 0xe67e22 : 0x2ecc71)
     .addFields(
       { name: 'Anlass', value: reason, inline: true },
       { name: 'Geprueft', value: String(summary.checked), inline: true },
       { name: 'Mit Spielzeit-Daten', value: String(summary.withData), inline: true },
       { name: 'Rollenaenderungen', value: String(summary.updated), inline: true },
+      { name: 'Fehler', value: String(summary.errors.length), inline: true },
       { name: 'Dauer', value: formatDuration(durationMs), inline: true },
-      { name: 'Neue Spielzeit insgesamt', value: `${summary.totalDeltaHours.toFixed(1)}h seit letztem Sync`, inline: true }
+      { name: '⏱️ Neue Spielzeit insgesamt', value: `**${summary.totalDeltaHours.toFixed(1)}h** seit letztem Sync`, inline: true }
     )
     .setTimestamp(new Date());
-
-  if (summary.changes.length) {
-    const changesText = summary.changes.slice(0, 25).join('\n');
-    embed.addFields({
-      name: 'Rollen-Aenderungen',
-      value: changesText.length > 1024 ? changesText.slice(0, 1000) + '\n...' : changesText,
-    });
-  }
-
-  if (summary.errors.length) {
-    const errorsText = summary.errors.slice(0, 10).join('\n');
-    embed.addFields({
-      name: 'Fehler',
-      value: errorsText.length > 1024 ? errorsText.slice(0, 1000) + '\n...' : errorsText,
-    });
-  }
 
   return embed;
 }
@@ -74,7 +95,7 @@ function buildPlayerEmbeds(summary) {
     for (const d of chunk) {
       embed.addFields({
         name: `${d.tag} — ${TIER_LABELS[d.tier]}`,
-        value: `${d.hours.toFixed(1)}h  ·  ${formatDelta(d.deltaHours)}`,
+        value: `**${d.hours.toFixed(1)}h** gesamt\n${formatDelta(d.deltaHours)}`,
         inline: true,
       });
     }
@@ -83,12 +104,21 @@ function buildPlayerEmbeds(summary) {
   return embeds;
 }
 
+async function sendEmbedBatches(channel, embeds, errorLabel) {
+  for (let i = 0; i < embeds.length; i += EMBEDS_PER_MESSAGE) {
+    await channel.send({ embeds: embeds.slice(i, i + EMBEDS_PER_MESSAGE) }).catch((err) => {
+      console.error(`[sync] Konnte ${errorLabel} nicht senden:`, err);
+    });
+  }
+}
+
 /**
- * Postet nach jedem Sync (automatisch oder manuell) in den konfigurierten
- * Log-Channel: eine Zusammenfassung (Dauer, Anzahl, Rollenaenderungen, seit
- * dem letzten Sync neu hinzugekommene Spielzeit insgesamt) sowie die
- * vollstaendige, aktuelle Liste aller ausgelesenen Spieler samt Spielzeit und
- * individuellem Zuwachs seit dem letzten Durchlauf.
+ * Postet nach jedem Sync (automatisch oder manuell) ein vollstaendiges Log in
+ * den konfigurierten Log-Channel: Zusammenfassung, Setup-Probleme (falls
+ * vorhanden), ALLE Rollen-Aenderungen, ALLE Fehler und die komplette Liste
+ * aller ausgelesenen Spieler samt Spielzeit und Zuwachs seit dem letzten
+ * Durchlauf. Nichts wird gekuerzt - bei Bedarf wird auf mehrere Nachrichten
+ * aufgeteilt.
  */
 async function postSyncLog(client, config, summary, reason, durationMs) {
   if (!config.logChannelId) return;
@@ -100,12 +130,22 @@ async function postSyncLog(client, config, summary, reason, durationMs) {
     console.error('[sync] Konnte Zusammenfassung nicht senden:', err);
   });
 
-  const playerEmbeds = buildPlayerEmbeds(summary);
-  for (let i = 0; i < playerEmbeds.length; i += EMBEDS_PER_MESSAGE) {
-    await channel.send({ embeds: playerEmbeds.slice(i, i + EMBEDS_PER_MESSAGE) }).catch((err) => {
-      console.error('[sync] Konnte Spielerliste nicht senden:', err);
-    });
+  if (summary.setupIssues.length) {
+    const setupEmbeds = buildListEmbeds('⚠️ Der Bot kann Rollen (teilweise) nicht vergeben', summary.setupIssues, 0xe74c3c);
+    await sendEmbedBatches(channel, setupEmbeds, 'Setup-Probleme');
   }
+
+  if (summary.changes.length) {
+    const changeEmbeds = buildListEmbeds('Rollen-Aenderungen', summary.changes, 0x3498db);
+    await sendEmbedBatches(channel, changeEmbeds, 'Rollen-Aenderungen');
+  }
+
+  if (summary.errors.length) {
+    const errorEmbeds = buildListEmbeds('Fehler', summary.errors, 0xe74c3c);
+    await sendEmbedBatches(channel, errorEmbeds, 'Fehler-Liste');
+  }
+
+  await sendEmbedBatches(channel, buildPlayerEmbeds(summary), 'Spielerliste');
 }
 
 module.exports = { postSyncLog };
