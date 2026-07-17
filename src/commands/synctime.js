@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { syncGuildRoles } = require('../roleSync');
+const { postSyncLog } = require('../syncReport');
 const config = require('../config');
 
 module.exports = {
@@ -11,18 +12,18 @@ module.exports = {
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
     const summary = await syncGuildRoles(interaction.guild, config);
+    await postSyncLog(interaction.client, config, summary, `manuell von ${interaction.user.tag}`);
 
     const lines = [
       `Geprueft: ${summary.checked} Mitglieder`,
       `Mit Spielzeit-Daten: ${summary.withData}`,
       `Rollenaenderungen: ${summary.updated}`,
     ];
-    if (summary.changes.length) {
-      lines.push('', ...summary.changes.slice(0, 20));
-      if (summary.changes.length > 20) lines.push(`... und ${summary.changes.length - 20} weitere`);
-    }
     if (summary.errors.length) {
       lines.push('', 'Fehler:', ...summary.errors.slice(0, 10));
+    }
+    if (config.logChannelId) {
+      lines.push('', `Vollstaendige Liste wurde in <#${config.logChannelId}> gepostet.`);
     }
 
     await interaction.editReply({ content: '```\n' + lines.join('\n') + '\n```' });
