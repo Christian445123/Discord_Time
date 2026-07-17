@@ -86,6 +86,7 @@ automatisch alle `SYNC_INTERVAL_MINUTES` Minuten.
 | Befehl | Beschreibung | Berechtigung |
 |---|---|---|
 | `/playtime [mitglied]` | Zeigt Spielzeit & Fortschritt zur naechsten Rolle | Alle |
+| `/top10` | Zeigt die Top 10 Spieler nach Spielzeit mit Platzierung | Alle |
 | `/link @mitglied <license>` | Verknuepft Discord-Account manuell mit FiveM-License | Manage Roles |
 | `/unlink @mitglied` | Entfernt manuelle Verknuepfung | Manage Roles |
 | `/synctime` | Erzwingt sofortigen Rollen-Abgleich | Manage Roles |
