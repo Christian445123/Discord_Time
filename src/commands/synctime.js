@@ -11,13 +11,16 @@ module.exports = {
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
+    const startedAt = Date.now();
     const summary = await syncGuildRoles(interaction.guild, config);
-    await postSyncLog(interaction.client, config, summary, `manuell von ${interaction.user.tag}`);
+    const durationMs = Date.now() - startedAt;
+    await postSyncLog(interaction.client, config, summary, `manuell von ${interaction.user.tag}`, durationMs);
 
     const lines = [
       `Geprueft: ${summary.checked} Mitglieder`,
       `Mit Spielzeit-Daten: ${summary.withData}`,
       `Rollenaenderungen: ${summary.updated}`,
+      `Dauer: ${durationMs}ms`,
     ];
     if (summary.errors.length) {
       lines.push('', 'Fehler:', ...summary.errors.slice(0, 10));

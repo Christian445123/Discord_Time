@@ -35,15 +35,17 @@ async function runSync(reason) {
   try {
     const guild = await client.guilds.fetch(config.guildId);
     console.log(`[sync] Starte Rollen-Abgleich (${reason}) ...`);
+    const startedAt = Date.now();
     const summary = await syncGuildRoles(guild, config);
+    const durationMs = Date.now() - startedAt;
     console.log(
-      `[sync] Fertig: ${summary.checked} geprueft, ${summary.withData} mit Daten, ${summary.updated} Rollenaenderungen, ${summary.errors.length} Fehler.`
+      `[sync] Fertig in ${durationMs}ms: ${summary.checked} geprueft, ${summary.withData} mit Daten, ${summary.updated} Rollenaenderungen, ${summary.errors.length} Fehler.`
     );
     for (const change of summary.changes) console.log(`[sync]   ${change}`);
     for (const err of summary.errors) console.warn(`[sync]   Fehler: ${err}`);
     for (const d of summary.details) console.log(`[sync]   gelesen: ${d.tag} - ${d.hours.toFixed(1)}h - ${d.tier}`);
 
-    await postSyncLog(client, config, summary, reason);
+    await postSyncLog(client, config, summary, reason, durationMs);
   } catch (err) {
     console.error('[sync] Unerwarteter Fehler beim Rollen-Abgleich:', err);
   }

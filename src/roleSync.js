@@ -1,5 +1,6 @@
 const { loadPlaytimeData } = require('./playtimeStore');
 const { getLink } = require('./linkStore');
+const { loadLastHours, saveLastHours } = require('./syncHistory');
 
 const TIER_NONE = 'none';
 const TIER_STAMMSPIELER = 'stammspieler';
@@ -52,6 +53,9 @@ async function syncGuildRoles(guild, config) {
 
   await guild.members.fetch();
 
+  const previousHours = loadLastHours();
+  const currentHours = {};
+
   const summary = {
     checked: 0,
     withData: 0,
@@ -59,6 +63,7 @@ async function syncGuildRoles(guild, config) {
     errors: [],
     changes: [],
     details: [],
+    totalDeltaHours: 0,
   };
 
   for (const member of guild.members.cache.values()) {
@@ -71,7 +76,13 @@ async function syncGuildRoles(guild, config) {
 
     const hours = minutes / 60;
     const tier = computeTier(hours, config);
-    summary.details.push({ id: member.id, tag: member.user.tag, hours, tier });
+    currentHours[member.id] = hours;
+
+    const previous = previousHours[member.id];
+    const deltaHours = typeof previous === 'number' ? hours - previous : null;
+    if (deltaHours) summary.totalDeltaHours += deltaHours;
+
+    summary.details.push({ id: member.id, tag: member.user.tag, hours, tier, deltaHours });
 
     const shouldHaveStammspieler = tier === TIER_STAMMSPIELER || (tier === TIER_EHRENMITGLIED && !config.exclusiveRoles);
     const shouldHaveEhrenmitglied = tier === TIER_EHRENMITGLIED;
@@ -105,6 +116,7 @@ async function syncGuildRoles(guild, config) {
   }
 
   summary.details.sort((a, b) => b.hours - a.hours);
+  saveLastHours(currentHours);
 
   return summary;
 }

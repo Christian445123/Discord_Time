@@ -95,11 +95,16 @@ automatisch alle `SYNC_INTERVAL_MINUTES` Minuten.
 Nach **jedem** Sync — egal ob automatisch (alle `SYNC_INTERVAL_MINUTES`) oder
 manuell per `/synctime` — postet der Bot in `LOG_CHANNEL_ID`:
 
-- eine kurze Zusammenfassung (gepruefte Mitglieder, Mitglieder mit Spielzeit-Daten, Rollenaenderungen, ggf. Fehler)
-- eine oder mehrere Textnachrichten mit der vollstaendigen, aktuellen Liste
-  aller ausgelesenen Spieler samt Stunden und aktueller Stufe (bei vielen
-  Spielern automatisch auf mehrere Nachrichten aufgeteilt, wegen des
-  2000-Zeichen-Limits von Discord)
+- eine Zusammenfassung als Embed (gepruefte Mitglieder, Mitglieder mit
+  Spielzeit-Daten, Rollenaenderungen, Dauer des Sync-Durchlaufs, insgesamt seit
+  dem letzten Sync neu hinzugekommene Spielzeit, ggf. Fehler)
+- ein oder mehrere Embeds mit der vollstaendigen, aktuellen Liste aller
+  ausgelesenen Spieler: Spielzeit gesamt und individueller Zuwachs seit dem
+  letzten Sync-Durchlauf je Spieler (automatisch auf mehrere Embeds/Nachrichten
+  aufgeteilt, sobald mehr als 25 Spieler bzw. mehr als 10 Embeds anfallen)
+
+Die Vergleichswerte fuer den Zuwachs werden in `data/lastSync.json` gespeichert.
+Beim allerersten Sync gibt es noch keine Vergleichsbasis ("erster Sync").
 
 So ist immer nachvollziehbar, welche Spieler beim letzten Durchlauf erfasst wurden.
 
