@@ -88,7 +88,9 @@ function checkRoleSetup(guild, config) {
  */
 async function listAllPlayers(guild, config) {
   const playtimeData = loadPlaytimeData(config);
-  await guild.members.fetch();
+  if (guild.members.cache.size === 0) {
+    await guild.members.list({ limit: 1000 });
+  }
 
   const previousHours = loadLastHours();
   const list = [];
