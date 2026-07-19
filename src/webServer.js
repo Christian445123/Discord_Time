@@ -14,6 +14,7 @@ const {
 } = require('./roleSync');
 const { loadLastHours } = require('./syncHistory');
 const { postSyncLog } = require('./syncReport');
+const { setLastSync, getLastSync } = require('./syncState');
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -166,6 +167,10 @@ function pageShell(title, bodyHtml, wide = false) {
   .nav a:hover { color: #e6e6ea; }
   .nav a.staff { background: #3b2f5e; color: #c4b5fd; font-weight: 600; }
   .nav a.staff:hover { background: #4c3d78; color: #e6e6ea; }
+  .nav a.logout-link { color: #e74c3c !important; }
+  .footer { text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #2a2e3d; font-size: 0.75rem; }
+  .footer a { color: #9098ab; text-decoration: none; margin: 0 8px; }
+  .footer a:hover { color: #e6e6ea; }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; }
   th, td { text-align: left; padding: 10px; border-bottom: 1px solid #2a2e3d; font-size: 0.9rem; }
   th { color: #9098ab; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -188,15 +193,20 @@ function pageShell(title, bodyHtml, wide = false) {
 </style>
 </head>
 <body>
-  <div class="card${wide ? ' wide' : ''}">${bodyHtml}</div>
+  <div class="card${wide ? ' wide' : ''}">${bodyHtml}
+  <div class="footer"><a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></div>
+  </div>
 </body>
 </html>`;
 }
 
 function navHtml(options = {}) {
   const links = ['<a href="/top10">🏆 Top 10</a>'];
-  if (options.loggedIn) links.unshift('<a href="/">👤 Meine Zeit</a>');
-  if (options.isHighTeam) links.push('<a href="/log" class="staff">👮 Staff</a>');
+  if (options.loggedIn) {
+    links.unshift('<a href="/">👤 Meine Zeit</a>');
+    links.push('<a href="/logout" class="logout-link">Abmelden</a>');
+  }
+  if (options.isHighTeam) links.splice(links.length - 1, 0, '<a href="/log" class="staff">👮 Staff</a>');
   return `<div class="nav">${links.join('')}</div>`;
 }
 
@@ -227,7 +237,6 @@ function renderDashboard(discordUser, view, isHighTeam) {
         </div>
       </div>
       <p class="hint">Fuer deinen Account wurde noch keine Spielzeit gefunden. Entweder hast du noch nicht auf dem Server gespielt, oder dein Discord-Account ist noch nicht mit deinem FiveM-Account verknuepft. Wende dich in dem Fall an einen Admin (Befehl <code>/link</code>).</p>
-      <a class="logout" href="/logout">Abmelden</a>
       `
     );
   }
@@ -253,7 +262,6 @@ function renderDashboard(discordUser, view, isHighTeam) {
     <div class="progress-track"><div class="progress-fill" style="width:${progressPercent}%"></div></div>
     <p class="hint">${view.progressText}</p>
     ${view.deltaText ? `<p class="hint">${view.deltaText}</p>` : ''}
-    <a class="logout" href="/logout">Abmelden</a>
     `
   );
 }
@@ -340,6 +348,24 @@ function renderLogPage(players) {
   const stammCount = players.filter((p) => p.tier === TIER_STAMMSPIELER).length;
   const totalHours = players.reduce((sum, p) => sum + p.hours, 0);
 
+  const lastSync = getLastSync();
+  let syncInfoHtml;
+  if (lastSync) {
+    const ts = lastSync.timestamp.toLocaleString('de-AT', { timeZone: 'Europe/Vienna' });
+    const dbBadge = lastSync.dbSynced === true ? '✅' : lastSync.dbSynced === false ? '❌' : '—';
+    syncInfoHtml = `<div class="hint" style="background:#20232f;padding:12px;border-radius:8px;line-height:1.8;">
+      <strong>🕒 ${ts}</strong> &mdash; Anlass: <em>${lastSync.reason}</em><br>
+      Geprueft: <strong>${lastSync.checked}</strong> &nbsp;·&nbsp;
+      Mit Daten: <strong>${lastSync.withData}</strong> &nbsp;·&nbsp;
+      Rollenaenderungen: <strong>${lastSync.updated}</strong> &nbsp;·&nbsp;
+      Fehler: <strong>${lastSync.errors}</strong> &nbsp;·&nbsp;
+      Datenbank: ${dbBadge} &nbsp;·&nbsp;
+      Dauer: <strong>${lastSync.durationMs}ms</strong>
+    </div>`;
+  } else {
+    syncInfoHtml = '<p class="hint">Noch kein Sync seit dem letzten Bot-Start.</p>';
+  }
+
   const top10Rows = players
     .slice(0, 10)
     .map((p, i) => {
@@ -381,6 +407,9 @@ function renderLogPage(players) {
       <button id="syncBtn" class="sync-btn" onclick="triggerSync()">🔄 Sync starten</button>
       <div id="syncResult" class="sync-result hint"></div>
     </div>
+
+    <h2>🕒 Letzter Sync</h2>
+    ${syncInfoHtml}
     <script>
       async function triggerSync() {
         const btn = document.getElementById('syncBtn');
@@ -560,6 +589,73 @@ function startWebServer(client) {
     req.session.destroy(() => res.redirect('/'));
   });
 
+  app.get('/impressum', (req, res) => {
+    const isLoggedIn = Boolean(req.session.discordUser);
+    const isHT = isHighTeamMember(req.session.discordUser);
+    res.send(pageShell('Impressum', `
+    ${navHtml({ loggedIn: isLoggedIn, isHighTeam: isHT })}
+    <h1>📋 Impressum</h1>
+    <p class="hint" style="color:#e67e22;margin-bottom:16px;">Bitte die Platzhalter durch die echten Angaben des Betreibers ersetzen.</p>
+    <div class="hint" style="line-height:2;">
+      <strong>Angaben gem&auml;&szlig; &sect; 5 TMG</strong><br>
+      <br>
+      <strong>Betreiber:</strong><br>
+      [Vorname Nachname / Organisation]<br>
+      [Stra&szlig;e und Hausnummer]<br>
+      [PLZ Ort, Land]<br>
+      <br>
+      <strong>Kontakt:</strong><br>
+      E-Mail: [kontakt@example.com]<br>
+      <br>
+      <strong>Hinweis:</strong> Dieses Panel ist ein privates Projekt ohne kommerziellen Hintergrund.<br>
+      Es steht in keiner Verbindung zu Rockstar Games, FiveM oder Discord Inc.
+    </div>
+    `));
+  });
+
+  app.get('/datenschutz', (req, res) => {
+    const isLoggedIn = Boolean(req.session.discordUser);
+    const isHT = isHighTeamMember(req.session.discordUser);
+    res.send(pageShell('Datenschutzerklaerung', `
+    ${navHtml({ loggedIn: isLoggedIn, isHighTeam: isHT })}
+    <h1>🔒 Datenschutzerklaerung</h1>
+    <div class="hint" style="line-height:1.9;">
+      <strong>1. Verantwortlicher</strong><br>
+      [Name und Kontakt des Betreibers &ndash; siehe Impressum]<br><br>
+
+      <strong>2. Welche Daten werden verarbeitet?</strong><br>
+      Beim Einloggen &uuml;ber Discord OAuth2 werden folgende Daten verarbeitet:<br>
+      &bull; Discord-ID, Benutzername und Profilbild (von Discord &uuml;bermittelt)<br>
+      &bull; Deine Rollenzugeh&ouml;rigkeit im Discord-Server (zur Zugangskontrolle)<br>
+      &bull; Spielzeit-Daten aus der txAdmin-Spielerdatenbank (lokal gespeichert)<br><br>
+
+      <strong>3. Zweck der Verarbeitung</strong><br>
+      Die Daten werden ausschlie&szlig;lich dazu genutzt, dir deine eigene Spielzeit
+      auf dem Server anzuzeigen und ggf. Discord-Rollen automatisch zu vergeben.
+      Eine Weitergabe an Dritte erfolgt nicht.<br><br>
+
+      <strong>4. Rechtsgrundlage</strong><br>
+      Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse des Serverbetreibers
+      an der Verwaltung des Spielerlebens) sowie deine freiwillige Anmeldung
+      via Discord OAuth2.<br><br>
+
+      <strong>5. Speicherdauer</strong><br>
+      Spielzeit-Daten werden solange gespeichert, wie der Server aktiv betrieben wird.
+      Session-Daten werden nach 7 Tagen automatisch gel&ouml;scht.
+      Datenbankeintr&auml;ge k&ouml;nnen auf Anfrage gel&ouml;scht werden.<br><br>
+
+      <strong>6. Deine Rechte</strong><br>
+      Du hast das Recht auf Auskunft, Berichtigung, L&ouml;schung und Einschr&auml;nkung
+      der Verarbeitung deiner Daten (Art. 15&ndash;18 DSGVO). Wende dich dazu an
+      den Betreiber (siehe Impressum).<br><br>
+
+      <strong>7. Discord</strong><br>
+      Die Anmeldung erfolgt &uuml;ber Discord OAuth2. Dabei gelten zus&auml;tzlich die
+      <a href="https://discord.com/privacy" style="color:#5865f2;">Datenschutzbestimmungen von Discord</a>.
+    </div>
+    `));
+  });
+
   let _isSyncing = false;
 
   app.post('/staff/sync', async (req, res) => {
@@ -576,6 +672,7 @@ function startWebServer(client) {
       const summary = await syncGuildRoles(guild, config);
       const durationMs = Date.now() - startedAt;
       await postSyncLog(client, config, summary, `manuell via Webpanel (${req.session.discordUser.username})`, durationMs);
+      setLastSync({ reason: 'manuell via Webpanel (' + req.session.discordUser.username + ')', checked: summary.checked, withData: summary.withData, updated: summary.updated, errors: summary.errors.length, dbSynced: summary.dbSynced, durationMs });
       _playersCache = null;
       res.json({ ok: true, checked: summary.checked, withData: summary.withData, updated: summary.updated, errors: summary.errors.length, durationMs });
     } catch (err) {

@@ -6,6 +6,7 @@ const config = require('./config');
 const { syncGuildRoles } = require('./roleSync');
 const { postSyncLog } = require('./syncReport');
 const { initDb } = require('./db');
+const { setLastSync } = require('./syncState');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
@@ -39,6 +40,7 @@ async function runSync(reason) {
     const startedAt = Date.now();
     const summary = await syncGuildRoles(guild, config);
     const durationMs = Date.now() - startedAt;
+    setLastSync({ reason, checked: summary.checked, withData: summary.withData, updated: summary.updated, errors: summary.errors.length, dbSynced: summary.dbSynced, durationMs });
     console.log(
       `[sync] Fertig in ${durationMs}ms: ${summary.checked} geprueft, ${summary.withData} mit Daten, ${summary.updated} Rollenaenderungen, ${summary.errors.length} Fehler.`
     );
