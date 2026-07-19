@@ -6,6 +6,10 @@ const config = require('./config');
 const { syncGuildRoles } = require('./roleSync');
 const { postSyncLog } = require('./syncReport');
 
+if (config.webEnabled) {
+  require('./webServer').startWebServer();
+}
+
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });

@@ -34,6 +34,10 @@ if (!['minutes', 'seconds', 'hours'].includes(playtimeUnit)) {
   throw new Error('PLAYERSDB_PLAYTIME_UNIT muss "minutes", "seconds" oder "hours" sein.');
 }
 
+const webEnabled = optionalBool('WEB_ENABLED', false);
+const webPort = optionalInt('WEB_PORT', 3000);
+const webBaseUrl = (process.env.WEB_BASE_URL || `http://localhost:${webPort}`).trim().replace(/\/+$/, '');
+
 const config = {
   token: required('DISCORD_TOKEN'),
   clientId: required('DISCORD_CLIENT_ID'),
@@ -53,6 +57,13 @@ const config = {
   syncIntervalMinutes: optionalInt('SYNC_INTERVAL_MINUTES', 15),
   logChannelId: process.env.LOG_CHANNEL_ID ? process.env.LOG_CHANNEL_ID.trim() : null,
   debug: optionalBool('DEBUG', false),
+
+  webEnabled,
+  webPort,
+  webBaseUrl,
+  // Nur noetig, wenn WEB_ENABLED=true (fuer den Discord-OAuth2-Login des Webpanels).
+  discordClientSecret: webEnabled ? required('DISCORD_CLIENT_SECRET') : (process.env.DISCORD_CLIENT_SECRET || '').trim(),
+  sessionSecret: webEnabled ? required('SESSION_SECRET') : (process.env.SESSION_SECRET || '').trim(),
 };
 
 if (config.stammspielerHours >= config.ehrenmitgliedHours) {

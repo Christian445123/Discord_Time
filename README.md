@@ -145,6 +145,52 @@ die Stammspieler-Rolle. Wer stattdessen moechte, dass die Stammspieler-Rolle
 beim Aufstieg zu Ehrenmitglied automatisch entfernt wird, setzt
 `EXCLUSIVE_ROLES=true`.
 
+## Webpanel
+
+Optional gibt es ein kleines Webpanel mit Discord-Login. Nach dem Login sieht
+jeder Nutzer **ausschliesslich seine eigene Spielzeit** — keine Liste anderer
+Spieler, kein Admin-Bereich. Genau wie bei `/playtime`: Gesamtstunden, aktuelle
+Stufe (Stammspieler/Ehrenmitglied) und Fortschritt zur naechsten Stufe.
+
+### Aktivieren
+
+1. Im [Discord Developer Portal](https://discord.com/developers/applications)
+   bei eurer Bot-Application unter **OAuth2 -> General**:
+   - **Client Secret** kopieren (ggf. vorher "Reset Secret") -> `DISCORD_CLIENT_SECRET`
+   - Unter **Redirects** genau folgende URL hinzufuegen (muss exakt mit
+     `WEB_BASE_URL` + `/auth/callback` uebereinstimmen):
+     `http://eure-domain-oder-ip:3000/auth/callback`
+2. In der `.env`:
+   ```
+   WEB_ENABLED=true
+   WEB_PORT=3000
+   WEB_BASE_URL=http://eure-domain-oder-ip:3000
+   DISCORD_CLIENT_SECRET=<eben kopiert>
+   SESSION_SECRET=<zufaelliger langer String>
+   ```
+   `SESSION_SECRET` generieren z.B. mit:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+3. `npm install` (installiert `express` und `express-session` mit), dann
+   `pm2 restart fivem-playtime-bot` (bzw. `npm start`).
+4. Port `3000` (oder der gewaehlte `WEB_PORT`) muss von aussen erreichbar sein
+   (Firewall/Security-Group freigeben). Fuer eine echte Domain mit HTTPS
+   empfiehlt sich ein Reverse-Proxy (z.B. nginx + Let's Encrypt) davor — dann
+   zeigt `WEB_BASE_URL` auf die `https://`-Domain statt auf IP+Port.
+
+### Wie der Login funktioniert
+
+- `/` zeigt einen "Mit Discord anmelden"-Button.
+- Nach Discord-OAuth2-Login (Scope nur `identify`, es werden keine Server-
+  oder Freundeslisten abgefragt) landet der Nutzer wieder auf `/` und sieht
+  dort seine eigenen Daten, ermittelt ueber dieselbe Zuordnung wie beim Bot
+  (automatisch per verknuepftem Discord in txAdmin, oder per `/link`).
+- Die Zuordnung passiert serverseitig ueber die Discord-ID aus der Login-
+  Session — ein Nutzer kann also technisch nicht an die Daten eines anderen
+  Nutzers gelangen.
+- `/logout` meldet ab.
+
 ## Laufender Betrieb
 
 Fuer Dauerbetrieb empfiehlt sich ein Prozess-Manager wie `pm2`:
