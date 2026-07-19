@@ -7,11 +7,13 @@ const {
   resolveMinutesForMember,
   computeTier,
   listAllPlayers,
+  syncGuildRoles,
   TIER_NONE,
   TIER_STAMMSPIELER,
   TIER_EHRENMITGLIED,
 } = require('./roleSync');
 const { loadLastHours } = require('./syncHistory');
+const { postSyncLog } = require('./syncReport');
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -179,6 +181,10 @@ function pageShell(title, bodyHtml, wide = false) {
   .search-bar { width: 100%; padding: 8px 12px; border-radius: 8px; background: #20232f; border: 1px solid #2a2e3d; color: #e6e6ea; font-size: 0.9rem; margin-bottom: 10px; }
   .search-bar::placeholder { color: #9098ab; }
   tr.hidden { display: none; }
+  .sync-btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 8px; background: #2f4d3a; color: #6fe39b; border: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+  .sync-btn:hover { background: #3a6349; }
+  .sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .sync-result { margin-top: 8px; font-size: 0.85rem; }
 </style>
 </head>
 <body>
@@ -371,6 +377,38 @@ function renderLogPage(players) {
     <h1>📊 Admin Dashboard</h1>
     <p class="sub">Spielzeit-Uebersicht fuer das HighTeam.</p>
 
+    <div style="margin-bottom:20px;">
+      <button id="syncBtn" class="sync-btn" onclick="triggerSync()">🔄 Sync starten</button>
+      <div id="syncResult" class="sync-result hint"></div>
+    </div>
+    <script>
+      async function triggerSync() {
+        const btn = document.getElementById('syncBtn');
+        const result = document.getElementById('syncResult');
+        btn.disabled = true;
+        btn.textContent = '⏳ Sync laeuft ...';
+        result.textContent = '';
+        result.style.color = '';
+        try {
+          const res = await fetch('/staff/sync', { method: 'POST' });
+          const data = await res.json();
+          if (data.ok) {
+            result.style.color = '#6fe39b';
+            result.textContent = '\u2705 Fertig in ' + data.durationMs + 'ms \u2014 ' + data.checked + ' geprueft, ' + data.updated + ' Rollenaenderungen, ' + data.errors + ' Fehler';
+            setTimeout(() => location.reload(), 1500);
+          } else {
+            result.style.color = '#e74c3c';
+            result.textContent = '❌ ' + (data.error || 'Unbekannter Fehler');
+          }
+        } catch (e) {
+          result.style.color = '#e74c3c';
+          result.textContent = '❌ Verbindungsfehler';
+        }
+        btn.disabled = false;
+        btn.textContent = '🔄 Sync starten';
+      }
+    </script>
+
     <div class="stats-grid">
       <div class="stat-box"><div class="stat-value">${players.length}</div><div class="stat-label">Spieler erfasst</div></div>
       <div class="stat-box"><div class="stat-value">${stammCount}</div><div class="stat-label">Stammspieler</div></div>
@@ -520,6 +558,32 @@ function startWebServer(client) {
 
   app.get('/logout', (req, res) => {
     req.session.destroy(() => res.redirect('/'));
+  });
+
+  let _isSyncing = false;
+
+  app.post('/staff/sync', async (req, res) => {
+    if (!req.session.discordUser || !isHighTeamMember(req.session.discordUser)) {
+      return res.status(403).json({ ok: false, error: 'Kein Zugriff.' });
+    }
+    if (_isSyncing) {
+      return res.status(429).json({ ok: false, error: 'Sync laeuft bereits. Bitte warten.' });
+    }
+    _isSyncing = true;
+    try {
+      const guild = await fetchGuild(client);
+      const startedAt = Date.now();
+      const summary = await syncGuildRoles(guild, config);
+      const durationMs = Date.now() - startedAt;
+      await postSyncLog(client, config, summary, `manuell via Webpanel (${req.session.discordUser.username})`, durationMs);
+      _playersCache = null;
+      res.json({ ok: true, checked: summary.checked, withData: summary.withData, updated: summary.updated, errors: summary.errors.length, durationMs });
+    } catch (err) {
+      console.error('[web] Fehler beim manuellen Sync:', err);
+      res.status(500).json({ ok: false, error: err.message });
+    } finally {
+      _isSyncing = false;
+    }
   });
 
   app.listen(config.webPort, () => {
