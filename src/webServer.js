@@ -15,7 +15,7 @@ const {
 const { loadLastHours } = require('./syncHistory');
 const { postSyncLog } = require('./syncReport');
 const { setLastSync, getLastSync } = require('./syncState');
-const { getAllPlayers, getPlayerByDiscordId } = require('./db');
+const { getAllPlayers, getPlayerByDiscordId, logLogin, getRecentLogins } = require('./db');
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -358,7 +358,7 @@ function renderForbiddenPage() {
   );
 }
 
-function renderLogPage(players) {
+function renderLogPage(players, logins = []) {
   const ehrenCount = players.filter((p) => p.tier === TIER_EHRENMITGLIED).length;
   const stammCount = players.filter((p) => p.tier === TIER_STAMMSPIELER).length;
   const totalHours = players.reduce((sum, p) => sum + p.hours, 0);
@@ -472,9 +472,26 @@ function renderLogPage(players) {
       <thead><tr><th>Spieler</th><th>Stunden</th><th>Zuwachs seit letztem Sync</th><th>Rang</th></tr></thead>
       <tbody>${allRows}</tbody>
     </table>
+
+    <h2>🔐 Login-Log (letzte 50)</h2>
+    <input class="search-bar" id="loginSearch" placeholder="Spieler oder IP suchen ..." oninput="filterLogin(this.value)">
+    <table id="loginTable">
+      <thead><tr><th>Spieler</th><th>Discord-ID</th><th>IP</th><th>Zeitpunkt</th></tr></thead>
+      <tbody>${logins.length ? logins.map(l => `<tr>
+        <td>${escapeHtml(l.discord_tag)}</td>
+        <td style="font-size:0.8rem;color:#9098ab;">${escapeHtml(l.discord_id)}</td>
+        <td style="font-size:0.8rem;">${escapeHtml(l.ip || '—')}</td>
+        <td style="font-size:0.8rem;">${new Date(l.logged_at).toLocaleString('de-AT', { timeZone: 'Europe/Vienna' })}</td>
+      </tr>`).join('') : '<tr><td colspan="4" class="hint">Noch keine Logins aufgezeichnet.</td></tr>'}</tbody>
+    </table>
     <script>
       function filterTable(q) {
         const rows = document.querySelectorAll('#allPlayersTable tbody tr');
+        const lower = q.toLowerCase();
+        rows.forEach(r => r.classList.toggle('hidden', !r.textContent.toLowerCase().includes(lower)));
+      }
+      function filterLogin(q) {
+        const rows = document.querySelectorAll('#loginTable tbody tr');
         const lower = q.toLowerCase();
         rows.forEach(r => r.classList.toggle('hidden', !r.textContent.toLowerCase().includes(lower)));
       }
@@ -571,8 +588,11 @@ function startWebServer(client) {
     }
     try {
       const guild = await fetchGuild(client);
-      const players = await getPlayersForWeb(guild);
-      res.send(renderLogPage(players));
+      const [players, logins] = await Promise.all([
+        getPlayersForWeb(guild),
+        getRecentLogins(50).catch(() => []),
+      ]);
+      res.send(renderLogPage(players, logins));
     } catch (err) {
       console.error('[web] Fehler beim Laden von /log:', err);
       res.status(500).send('Fehler beim Laden des Staff-Dashboards. Bitte spaeter erneut versuchen.');
@@ -603,6 +623,7 @@ function startWebServer(client) {
         ? Array.isArray(guildMember?.roles) && guildMember.roles.includes(config.roleHighTeamId)
         : false;
       req.session.discordUser = { id: user.id, username: user.global_name || user.username, avatar: user.avatar, isHighTeam };
+      logLogin(user.id, user.global_name || user.username, req.ip).catch(() => null);
       const redirectTo = req.session.postLoginRedirect || '/';
       delete req.session.postLoginRedirect;
       res.redirect(redirectTo);

@@ -39,7 +39,17 @@ async function initDb() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
 
-  console.log('[db] Verbindung hergestellt, Tabelle "playtime_stats" bereit.');
+  await getPool().query(`
+    CREATE TABLE IF NOT EXISTS login_log (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      discord_id VARCHAR(32) NOT NULL,
+      discord_tag VARCHAR(64) NOT NULL,
+      ip VARCHAR(64),
+      logged_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  console.log('[db] Verbindung hergestellt, Tabellen bereit.');
 }
 
 async function upsertPlaytimeSnapshot(details) {
@@ -59,6 +69,23 @@ async function upsertPlaytimeSnapshot(details) {
        updated_at = VALUES(updated_at)`,
     [rows]
   );
+}
+
+async function logLogin(discordId, discordTag, ip) {
+  if (!config.dbEnabled) return;
+  await getPool().query(
+    'INSERT INTO login_log (discord_id, discord_tag, ip, logged_at) VALUES (?, ?, ?, NOW())',
+    [discordId, discordTag, ip || null]
+  );
+}
+
+async function getRecentLogins(limit = 50) {
+  if (!config.dbEnabled) return [];
+  const [rows] = await getPool().query(
+    'SELECT discord_id, discord_tag, ip, logged_at FROM login_log ORDER BY logged_at DESC LIMIT ?',
+    [limit]
+  );
+  return rows;
 }
 
 async function getAllPlayers() {
@@ -92,4 +119,4 @@ async function getPlayerByDiscordId(discordId) {
   };
 }
 
-module.exports = { initDb, upsertPlaytimeSnapshot, getAllPlayers, getPlayerByDiscordId };
+module.exports = { initDb, upsertPlaytimeSnapshot, getAllPlayers, getPlayerByDiscordId, logLogin, getRecentLogins };
