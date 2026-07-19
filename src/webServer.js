@@ -592,23 +592,69 @@ function startWebServer(client) {
   app.get('/impressum', (req, res) => {
     const isLoggedIn = Boolean(req.session.discordUser);
     const isHT = isHighTeamMember(req.session.discordUser);
+    const name = escapeHtml(config.legalName || '[Name des Betreibers]');
+    const street = escapeHtml(config.legalStreet || '[Stra\u00dfe und Hausnummer]');
+    const city = escapeHtml(config.legalCity || '[PLZ Ort, Land]');
+    const email = escapeHtml(config.legalEmail || '[kontakt@example.com]');
+    const discord = escapeHtml(config.legalDiscord || '[Discord-Benutzername]');
+    const srv = escapeHtml(config.serverName);
     res.send(pageShell('Impressum', `
     ${navHtml({ loggedIn: isLoggedIn, isHighTeam: isHT })}
-    <h1>📋 Impressum</h1>
-    <p class="hint" style="color:#e67e22;margin-bottom:16px;">Bitte die Platzhalter durch die echten Angaben des Betreibers ersetzen.</p>
+    <h1>\ud83d\udccb Impressum</h1>
     <div class="hint" style="line-height:2;">
-      <strong>Angaben gem&auml;&szlig; &sect; 5 TMG</strong><br>
-      <br>
+      <strong>Angaben gem&auml;&szlig; &sect; 5 TMG</strong><br><br>
       <strong>Betreiber:</strong><br>
-      [Vorname Nachname / Organisation]<br>
-      [Stra&szlig;e und Hausnummer]<br>
-      [PLZ Ort, Land]<br>
+      ${name}<br>
+      ${street}<br>
+      ${city}<br>
       <br>
       <strong>Kontakt:</strong><br>
-      E-Mail: [kontakt@example.com]<br>
+      E-Mail: <a href="mailto:${email}" style="color:#5865f2;">${email}</a><br>
+      Discord: ${discord}<br>
       <br>
-      <strong>Hinweis:</strong> Dieses Panel ist ein privates Projekt ohne kommerziellen Hintergrund.<br>
-      Es steht in keiner Verbindung zu Rockstar Games, FiveM oder Discord Inc.
+      <strong>Hinweis:</strong><br>
+      Dieses Webpanel geh&ouml;rt zum Discord-Bot des Projekts <em>${srv}</em>
+      und ist ein privates, nicht-kommerzielles Projekt.
+      Es besteht keine Verbindung zu Rockstar Games, FiveM oder Discord Inc.
+    </div>
+    `));
+  });
+
+  app.get('/datenschutz', (req, res) => {
+    const isLoggedIn = Boolean(req.session.discordUser);
+    const isHT = isHighTeamMember(req.session.discordUser);
+    const email = escapeHtml(config.legalEmail || '[kontakt@example.com]');
+    const srv = escapeHtml(config.serverName);
+    res.send(pageShell('Datenschutzerklaerung', `
+    ${navHtml({ loggedIn: isLoggedIn, isHighTeam: isHT })}
+    <h1>\ud83d\udd12 Datenschutzerkl&auml;rung</h1>
+    <div class="hint" style="line-height:1.9;">
+      <strong>1. Verantwortlicher</strong><br>
+      Betreiber des Projekts <em>${srv}</em> &mdash; siehe <a href="/impressum" style="color:#5865f2;">Impressum</a><br><br>
+
+      <strong>2. Welche Daten werden verarbeitet?</strong><br>
+      &bull; Discord-ID, Benutzername und Profilbild (von Discord &uuml;bermittelt)<br>
+      &bull; Rollenzugeh&ouml;rigkeit im Discord-Server (zur Zugangskontrolle)<br>
+      &bull; Spielzeit-Daten aus der txAdmin-Spielerdatenbank (lokal gespeichert)<br><br>
+
+      <strong>3. Zweck der Verarbeitung</strong><br>
+      Ausschlie&szlig;lich zur Anzeige der eigenen Spielzeit und automatischen
+      Rollenvergabe. Keine Weitergabe an Dritte.<br><br>
+
+      <strong>4. Rechtsgrundlage</strong><br>
+      Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;f DSGVO sowie freiwillige Anmeldung via Discord OAuth2.<br><br>
+
+      <strong>5. Speicherdauer</strong><br>
+      Spielzeit-Daten: solange der Server aktiv ist.<br>
+      Session-Cookies: 7 Tage.<br>
+      L&ouml;schung auf Anfrage m&ouml;glich.<br><br>
+
+      <strong>6. Deine Rechte (Art.&nbsp;15&ndash;21 DSGVO)</strong><br>
+      Auskunft, Berichtigung, L&ouml;schung, Einschr&auml;nkung.<br>
+      Kontakt: <a href="mailto:${email}" style="color:#5865f2;">${email}</a><br><br>
+
+      <strong>7. Discord Inc.</strong><br>
+      <a href="https://discord.com/privacy" style="color:#5865f2;">Datenschutzbestimmungen von Discord</a>
     </div>
     `));
   });

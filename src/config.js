@@ -76,6 +76,14 @@ const config = {
   dbUser: dbEnabled ? required('DB_USER') : (process.env.DB_USER || '').trim(),
   dbPassword: process.env.DB_PASSWORD || '',
   dbName: dbEnabled ? required('DB_NAME') : (process.env.DB_NAME || '').trim(),
+
+  // Impressum / DSGVO
+  legalName: (process.env.LEGAL_NAME || '').trim(),
+  legalStreet: (process.env.LEGAL_STREET || '').trim(),
+  legalCity: (process.env.LEGAL_CITY || '').trim(),
+  legalEmail: (process.env.LEGAL_EMAIL || '').trim(),
+  legalDiscord: (process.env.LEGAL_DISCORD || '').trim(),
+  serverName: (process.env.SERVER_NAME || 'Vienna State RP').trim(),
 };
 
 if (config.stammspielerHours >= config.ehrenmitgliedHours) {
