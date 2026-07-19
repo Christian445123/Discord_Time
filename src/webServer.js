@@ -160,6 +160,15 @@ function pageShell(title, bodyHtml, wide = false) {
   tr:last-child td { border-bottom: none; }
   .rank { font-weight: 700; width: 44px; }
   .forbidden { text-align: center; padding: 20px 0; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat-box { background: #20232f; border-radius: 10px; padding: 16px; text-align: center; }
+  .stat-box .stat-value { font-size: 1.6rem; font-weight: 700; }
+  .stat-box .stat-label { color: #9098ab; font-size: 0.78rem; margin-top: 4px; }
+  h2 { font-size: 1.05rem; margin: 24px 0 8px; color: #9098ab; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .search-bar { width: 100%; padding: 8px 12px; border-radius: 8px; background: #20232f; border: 1px solid #2a2e3d; color: #e6e6ea; font-size: 0.9rem; margin-bottom: 10px; }
+  .search-bar::placeholder { color: #9098ab; }
+  tr.hidden { display: none; }
 </style>
 </head>
 <body>
@@ -311,7 +320,24 @@ function renderForbiddenPage() {
 }
 
 function renderLogPage(players) {
-  const rows = players.length
+  const ehrenCount = players.filter((p) => p.tier === TIER_EHRENMITGLIED).length;
+  const stammCount = players.filter((p) => p.tier === TIER_STAMMSPIELER).length;
+  const totalHours = players.reduce((sum, p) => sum + p.hours, 0);
+
+  const top10Rows = players
+    .slice(0, 10)
+    .map((p, i) => {
+      const rank = MEDALS[i] || `${i + 1}.`;
+      return `<tr>
+        <td class="rank">${rank}</td>
+        <td>${escapeHtml(p.tag)}</td>
+        <td>${p.hours.toFixed(1)}h</td>
+        <td><span class="badge ${p.tier}">${TIER_LABELS[p.tier]}</span></td>
+      </tr>`;
+    })
+    .join('');
+
+  const allRows = players.length
     ? players
         .map((p) => {
           const deltaText =
@@ -329,15 +355,38 @@ function renderLogPage(players) {
     : '<tr><td colspan="4" class="hint">Noch keine Spielzeit-Daten gefunden.</td></tr>';
 
   return pageShell(
-    'Team-Log',
+    'Admin Dashboard',
     `
     ${navHtml({ loggedIn: true, isHighTeam: true })}
-    <h1>📋 Team-Log</h1>
-    <p class="sub">Alle Spieler mit erfasster Spielzeit (${players.length}).</p>
+    <h1>📊 Admin Dashboard</h1>
+    <p class="sub">Spielzeit-Uebersicht fuer das HighTeam.</p>
+
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-value">${players.length}</div><div class="stat-label">Spieler erfasst</div></div>
+      <div class="stat-box"><div class="stat-value">${stammCount}</div><div class="stat-label">Stammspieler</div></div>
+      <div class="stat-box"><div class="stat-value">${ehrenCount}</div><div class="stat-label">Ehrenmitglieder</div></div>
+      <div class="stat-box"><div class="stat-value">${totalHours.toFixed(0)}h</div><div class="stat-label">Spielzeit gesamt</div></div>
+    </div>
+
+    <h2>🏆 Top 10</h2>
     <table>
-      <thead><tr><th>Spieler</th><th>Stunden</th><th>Zuwachs seit letztem Sync</th><th>Rang</th></tr></thead>
-      <tbody>${rows}</tbody>
+      <thead><tr><th>Platz</th><th>Spieler</th><th>Stunden</th><th>Rang</th></tr></thead>
+      <tbody>${top10Rows}</tbody>
     </table>
+
+    <h2>👥 Alle Spieler (${players.length})</h2>
+    <input class="search-bar" id="playerSearch" placeholder="Spieler suchen ..." oninput="filterTable(this.value)">
+    <table id="allPlayersTable">
+      <thead><tr><th>Spieler</th><th>Stunden</th><th>Zuwachs seit letztem Sync</th><th>Rang</th></tr></thead>
+      <tbody>${allRows}</tbody>
+    </table>
+    <script>
+      function filterTable(q) {
+        const rows = document.querySelectorAll('#allPlayersTable tbody tr');
+        const lower = q.toLowerCase();
+        rows.forEach(r => r.classList.toggle('hidden', !r.textContent.toLowerCase().includes(lower)));
+      }
+    </script>
     `,
     true
   );
