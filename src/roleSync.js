@@ -2,6 +2,7 @@ const { PermissionFlagsBits } = require('discord.js');
 const { loadPlaytimeData } = require('./playtimeStore');
 const { getLink } = require('./linkStore');
 const { loadLastHours, saveLastHours } = require('./syncHistory');
+const { upsertPlaytimeSnapshot } = require('./db');
 
 const TIER_NONE = 'none';
 const TIER_STAMMSPIELER = 'stammspieler';
@@ -204,6 +205,15 @@ async function syncGuildRoles(guild, config) {
     .sort((a, b) => b.deltaHours - a.deltaHours);
 
   saveLastHours(currentHours);
+
+  if (config.dbEnabled) {
+    try {
+      await upsertPlaytimeSnapshot(summary.details);
+    } catch (err) {
+      summary.errors.push(`Datenbank-Update fehlgeschlagen: ${err.message}`);
+      console.error('[db] Konnte Spielzeit nicht speichern:', err);
+    }
+  }
 
   return summary;
 }

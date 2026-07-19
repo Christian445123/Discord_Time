@@ -5,6 +5,7 @@ const cron = require('node-cron');
 const config = require('./config');
 const { syncGuildRoles } = require('./roleSync');
 const { postSyncLog } = require('./syncReport');
+const { initDb } = require('./db');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
@@ -53,6 +54,14 @@ async function runSync(reason) {
 
 client.once('ready', async () => {
   console.log(`Eingeloggt als ${client.user.tag}.`);
+
+  if (config.dbEnabled) {
+    try {
+      await initDb();
+    } catch (err) {
+      console.error('[db] Verbindung/Initialisierung fehlgeschlagen:', err);
+    }
+  }
 
   if (config.webEnabled) {
     require('./webServer').startWebServer(client);

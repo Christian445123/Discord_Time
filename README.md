@@ -210,6 +210,48 @@ des eingeloggten Nutzers geprueft (nicht nur im Frontend versteckt).
   automatisch dort.
 - `/logout` meldet ab.
 
+## Datenbank (optional)
+
+Zusaetzlich zur Rollenvergabe und dem Discord-Log kann der Bot die ausgelesene
+Spielzeit auch in eine MySQL/MariaDB-Datenbank schreiben — praktisch, wenn
+andere Tools/Webseiten (z.B. eine bestehende Server-Webseite) direkt darauf
+zugreifen sollen.
+
+### Aktivieren
+
+In der `.env`:
+```
+DB_ENABLED=true
+DB_HOST=<Datenbank-Host, z.B. localhost oder IP>
+DB_PORT=3306
+DB_USER=<DB-Benutzer>
+DB_PASSWORD=<DB-Passwort>
+DB_NAME=<Datenbankname>
+```
+Der DB-Benutzer braucht Rechte zum Anlegen einer Tabelle (`CREATE TABLE`)
+sowie `INSERT`/`UPDATE` in der Ziel-Datenbank. Danach `npm install` (installiert
+`mysql2` mit) und `pm2 restart fivem-playtime-bot`.
+
+### Was gespeichert wird
+
+Bei jedem Sync (automatisch alle `SYNC_INTERVAL_MINUTES` oder manuell per
+`/synctime`) wird pro Spieler ein Datensatz in der Tabelle `playtime_stats`
+angelegt bzw. aktualisiert (kein Verlauf, nur der aktuelle Stand):
+
+| Spalte | Bedeutung |
+|---|---|
+| `discord_id` (Primary Key) | Discord-Snowflake des Spielers |
+| `discord_tag` | Discord-Benutzername zum Zeitpunkt des Syncs |
+| `hours` | Gesamte Spielzeit in Stunden |
+| `tier` | `none`, `stammspieler` oder `ehrenmitglied` |
+| `delta_hours` | Zuwachs seit dem vorherigen Sync (kann `NULL` sein, z.B. beim ersten Mal) |
+| `updated_at` | Zeitpunkt des letzten Updates |
+
+Die Tabelle wird beim Start automatisch angelegt, falls sie noch nicht
+existiert (`CREATE TABLE IF NOT EXISTS`). Schlaegt das DB-Update bei einem
+Sync fehl (z.B. Verbindungsproblem), taucht das als Fehler im Discord-Log
+auf, die Rollenvergabe selbst laeuft trotzdem normal weiter.
+
 ## Laufender Betrieb
 
 Fuer Dauerbetrieb empfiehlt sich ein Prozess-Manager wie `pm2`:

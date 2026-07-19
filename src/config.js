@@ -38,6 +38,8 @@ const webEnabled = optionalBool('WEB_ENABLED', false);
 const webPort = optionalInt('WEB_PORT', 3000);
 const webBaseUrl = (process.env.WEB_BASE_URL || `http://localhost:${webPort}`).trim().replace(/\/+$/, '');
 
+const dbEnabled = optionalBool('DB_ENABLED', false);
+
 const config = {
   token: required('DISCORD_TOKEN'),
   clientId: required('DISCORD_CLIENT_ID'),
@@ -66,6 +68,14 @@ const config = {
   sessionSecret: webEnabled ? required('SESSION_SECRET') : (process.env.SESSION_SECRET || '').trim(),
   // Rolle, deren Mitglieder im Webpanel den Team-Log-Bereich (alle Spieler + Zeiten) sehen duerfen.
   roleHighTeamId: webEnabled ? required('ROLE_HIGHTEAM_ID') : (process.env.ROLE_HIGHTEAM_ID || '').trim(),
+
+  dbEnabled,
+  // Nur noetig, wenn DB_ENABLED=true.
+  dbHost: dbEnabled ? required('DB_HOST') : (process.env.DB_HOST || '').trim(),
+  dbPort: optionalInt('DB_PORT', 3306),
+  dbUser: dbEnabled ? required('DB_USER') : (process.env.DB_USER || '').trim(),
+  dbPassword: process.env.DB_PASSWORD || '',
+  dbName: dbEnabled ? required('DB_NAME') : (process.env.DB_NAME || '').trim(),
 };
 
 if (config.stammspielerHours >= config.ehrenmitgliedHours) {
