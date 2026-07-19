@@ -86,11 +86,26 @@ function checkRoleSetup(guild, config) {
  * gefahrlos bei jedem Seitenaufruf im Webpanel aufrufbar (z.B. fuer /top10
  * und den Team-Log-Bereich).
  */
+/**
+ * Stellt sicher, dass alle Mitglieder der Guild im Cache sind.
+ * Verwendet REST-Paginierung (kein Gateway-Opcode-8), um Rate-Limits zu vermeiden.
+ */
+async function ensureAllMembersCached(guild) {
+  if (guild.members.cache.size >= guild.memberCount) return;
+  let after;
+  while (true) {
+    const opts = { limit: 1000 };
+    if (after) opts.after = after;
+    const batch = await guild.members.list(opts);
+    if (batch.size === 0) break;
+    after = batch.last().id;
+    if (batch.size < 1000) break;
+  }
+}
+
 async function listAllPlayers(guild, config) {
   const playtimeData = loadPlaytimeData(config);
-  if (guild.members.cache.size === 0) {
-    await guild.members.list({ limit: 1000 });
-  }
+  await ensureAllMembersCached(guild);
 
   const previousHours = loadLastHours();
   const list = [];
@@ -133,9 +148,7 @@ async function syncGuildRoles(guild, config) {
     for (const err of playtimeData.errors) console.warn(`[playtime] ${err}`);
   }
 
-  if (guild.members.cache.size === 0) {
-    await guild.members.list({ limit: 1000 });
-  }
+  await ensureAllMembersCached(guild);
 
   const previousHours = loadLastHours();
   const currentHours = {};
