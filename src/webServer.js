@@ -32,7 +32,7 @@ function buildAuthorizeUrl(state) {
     client_id: config.clientId,
     redirect_uri: redirectUri(),
     response_type: 'code',
-    scope: 'identify',
+    scope: 'identify guilds.members.read',
     state,
   });
   return `${DISCORD_API}/oauth2/authorize?${params.toString()}`;
@@ -66,6 +66,14 @@ async function fetchDiscordUser(accessToken) {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error(`Discord Nutzerabfrage fehlgeschlagen (${res.status}).`);
+  return res.json();
+}
+
+async function fetchGuildMember(accessToken) {
+  const res = await fetch(`${DISCORD_API}/users/@me/guilds/${config.guildId}/member`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
   return res.json();
 }
 
@@ -154,6 +162,8 @@ function pageShell(title, bodyHtml, wide = false) {
   .nav { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
   .nav a { color: #9098ab; text-decoration: none; font-size: 0.85rem; padding: 6px 12px; border-radius: 8px; background: #20232f; }
   .nav a:hover { color: #e6e6ea; }
+  .nav a.staff { background: #3b2f5e; color: #c4b5fd; font-weight: 600; }
+  .nav a.staff:hover { background: #4c3d78; color: #e6e6ea; }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; }
   th, td { text-align: left; padding: 10px; border-bottom: 1px solid #2a2e3d; font-size: 0.9rem; }
   th { color: #9098ab; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -180,7 +190,7 @@ function pageShell(title, bodyHtml, wide = false) {
 function navHtml(options = {}) {
   const links = ['<a href="/top10">🏆 Top 10</a>'];
   if (options.loggedIn) links.unshift('<a href="/">👤 Meine Zeit</a>');
-  if (options.isHighTeam) links.push('<a href="/log">📋 Team-Log</a>');
+  if (options.isHighTeam) links.push('<a href="/log" class="staff">👮 Staff</a>');
   return `<div class="nav">${links.join('')}</div>`;
 }
 
@@ -410,11 +420,8 @@ async function fetchGuild(client) {
   return client.guilds.fetch(config.guildId);
 }
 
-async function isHighTeamMember(client, discordId) {
-  if (!config.roleHighTeamId) return false;
-  const guild = await fetchGuild(client);
-  const member = await guild.members.fetch(discordId).catch(() => null);
-  return member ? member.roles.cache.has(config.roleHighTeamId) : false;
+function isHighTeamMember(discordUser) {
+  return Boolean(discordUser?.isHighTeam);
 }
 
 function startWebServer(client) {
@@ -436,10 +443,8 @@ function startWebServer(client) {
       return;
     }
     try {
-      const [view, isHighTeam] = await Promise.all([
-        buildDashboardView(req.session.discordUser),
-        isHighTeamMember(client, req.session.discordUser.id),
-      ]);
+      const view = buildDashboardView(req.session.discordUser);
+      const isHighTeam = isHighTeamMember(req.session.discordUser);
       res.send(renderDashboard(req.session.discordUser, view, isHighTeam));
     } catch (err) {
       console.error('[web] Fehler beim Laden von /:', err);
@@ -452,7 +457,7 @@ function startWebServer(client) {
       const guild = await fetchGuild(client);
       const players = await getCachedPlayers(guild, config);
       const loggedIn = Boolean(req.session.discordUser);
-      const isHighTeam = loggedIn ? await isHighTeamMember(client, req.session.discordUser.id) : false;
+      const isHighTeam = loggedIn ? isHighTeamMember(req.session.discordUser) : false;
       res.send(renderTop10Page(players, { loggedIn, isHighTeam }));
     } catch (err) {
       console.error('[web] Fehler beim Laden von /top10:', err);
@@ -466,18 +471,17 @@ function startWebServer(client) {
       res.redirect('/login');
       return;
     }
+    if (!isHighTeamMember(req.session.discordUser)) {
+      res.status(403).send(renderForbiddenPage());
+      return;
+    }
     try {
-      const isHighTeam = await isHighTeamMember(client, req.session.discordUser.id);
-      if (!isHighTeam) {
-        res.status(403).send(renderForbiddenPage());
-        return;
-      }
       const guild = await fetchGuild(client);
       const players = await getCachedPlayers(guild, config);
       res.send(renderLogPage(players));
     } catch (err) {
       console.error('[web] Fehler beim Laden von /log:', err);
-      res.status(500).send('Fehler beim Laden des Team-Logs. Bitte spaeter erneut versuchen.');
+      res.status(500).send('Fehler beim Laden des Staff-Dashboards. Bitte spaeter erneut versuchen.');
     }
   });
 
@@ -497,8 +501,14 @@ function startWebServer(client) {
 
     try {
       const token = await exchangeCodeForToken(code);
-      const user = await fetchDiscordUser(token.access_token);
-      req.session.discordUser = { id: user.id, username: user.global_name || user.username, avatar: user.avatar };
+      const [user, guildMember] = await Promise.all([
+        fetchDiscordUser(token.access_token),
+        fetchGuildMember(token.access_token).catch(() => null),
+      ]);
+      const isHighTeam = config.roleHighTeamId
+        ? Array.isArray(guildMember?.roles) && guildMember.roles.includes(config.roleHighTeamId)
+        : false;
+      req.session.discordUser = { id: user.id, username: user.global_name || user.username, avatar: user.avatar, isHighTeam };
       const redirectTo = req.session.postLoginRedirect || '/';
       delete req.session.postLoginRedirect;
       res.redirect(redirectTo);
