@@ -78,6 +78,39 @@ function checkRoleSetup(guild, config) {
 }
 
 /**
+ * Liest die playersDB und liefert fuer alle Mitglieder der Guild mit
+ * Spielzeit-Daten eine sortierte Momentaufnahme (absteigend nach Stunden).
+ * Im Gegensatz zu syncGuildRoles werden dabei WEDER Rollen veraendert NOCH
+ * die Sync-Historie (data/lastSync.json) fortgeschrieben - rein lesend, daher
+ * gefahrlos bei jedem Seitenaufruf im Webpanel aufrufbar (z.B. fuer /top10
+ * und den Team-Log-Bereich).
+ */
+async function listAllPlayers(guild, config) {
+  const playtimeData = loadPlaytimeData(config);
+  await guild.members.fetch();
+
+  const previousHours = loadLastHours();
+  const list = [];
+
+  for (const member of guild.members.cache.values()) {
+    if (member.user.bot) continue;
+
+    const minutes = resolveMinutesForMember(member.id, playtimeData);
+    if (minutes === null) continue;
+
+    const hours = minutes / 60;
+    const tier = computeTier(hours, config);
+    const previous = previousHours[member.id];
+    const deltaHours = typeof previous === 'number' ? hours - previous : null;
+
+    list.push({ id: member.id, tag: member.user.tag, hours, tier, deltaHours });
+  }
+
+  list.sort((a, b) => b.hours - a.hours);
+  return list;
+}
+
+/**
  * Liest die playersDB neu ein und gleicht fuer alle Mitglieder der Guild
  * die Rollen Stammspieler/Ehrenmitglied mit ihrer tatsaechlichen Spielzeit ab.
  * Mitglieder, fuer die keine Spielzeit-Daten gefunden werden (weder automatisch
@@ -177,6 +210,7 @@ async function syncGuildRoles(guild, config) {
 
 module.exports = {
   syncGuildRoles,
+  listAllPlayers,
   resolveMinutesForMember,
   computeTier,
   TIER_NONE,

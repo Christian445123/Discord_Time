@@ -147,10 +147,18 @@ beim Aufstieg zu Ehrenmitglied automatisch entfernt wird, setzt
 
 ## Webpanel
 
-Optional gibt es ein kleines Webpanel mit Discord-Login. Nach dem Login sieht
-jeder Nutzer **ausschliesslich seine eigene Spielzeit** — keine Liste anderer
-Spieler, kein Admin-Bereich. Genau wie bei `/playtime`: Gesamtstunden, aktuelle
-Stufe (Stammspieler/Ehrenmitglied) und Fortschritt zur naechsten Stufe.
+Optional gibt es ein kleines Webpanel mit Discord-Login und drei Bereichen:
+
+| Route | Sichtbar fuer | Inhalt |
+|---|---|---|
+| `/` | Jeden nach Login | **Nur die eigene** Spielzeit, Stufe, Fortschritt zur naechsten Rolle (wie `/playtime`) |
+| `/top10` | **Alle**, auch ohne Login | Top 10 Spieler nach Spielzeit mit Platzierung (wie `/top10` im Discord) |
+| `/log` | Nur Mitglieder der `ROLE_HIGHTEAM_ID`-Rolle | Team-Log: **alle** erfassten Spieler mit Spielzeit, Zuwachs seit letztem Sync und Stufe |
+
+`/` bleibt streng privat (ein Nutzer sieht ausschliesslich seine eigenen
+Daten), `/top10` ist bewusst oeffentlich fuer alle, `/log` ist nur fuer das
+HighTeam gedacht und wird serverseitig ueber die tatsaechliche Discord-Rolle
+des eingeloggten Nutzers geprueft (nicht nur im Frontend versteckt).
 
 ### Aktivieren
 
@@ -167,7 +175,13 @@ Stufe (Stammspieler/Ehrenmitglied) und Fortschritt zur naechsten Stufe.
    WEB_BASE_URL=http://eure-domain-oder-ip:3000
    DISCORD_CLIENT_SECRET=<eben kopiert>
    SESSION_SECRET=<zufaelliger langer String>
+   ROLE_HIGHTEAM_ID=<Rollen-ID von HighTeam>
    ```
+   `ROLE_HIGHTEAM_ID` wie bei den anderen Rollen ermitteln: Discord ->
+   Entwicklermodus aktivieren -> Rechtsklick auf die HighTeam-Rolle -> "ID
+   kopieren". **Wichtig:** Ist `WEB_ENABLED=true` gesetzt, startet der Bot
+   nicht, solange `ROLE_HIGHTEAM_ID` (genau wie `DISCORD_CLIENT_SECRET` und
+   `SESSION_SECRET`) leer ist.
    `SESSION_SECRET` generieren z.B. mit:
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -189,6 +203,11 @@ Stufe (Stammspieler/Ehrenmitglied) und Fortschritt zur naechsten Stufe.
 - Die Zuordnung passiert serverseitig ueber die Discord-ID aus der Login-
   Session — ein Nutzer kann also technisch nicht an die Daten eines anderen
   Nutzers gelangen.
+- Fuer `/log` prueft der Bot bei jedem Aufruf live ueber seine eigene
+  Gilden-Verbindung, ob der eingeloggte Nutzer die `ROLE_HIGHTEAM_ID`-Rolle
+  besitzt (kein OAuth2-Scope fuer Server-/Rolleninfos noetig). Ruft jemand
+  `/log` ohne Login auf, wird er zuerst zum Login geschickt und landet danach
+  automatisch dort.
 - `/logout` meldet ab.
 
 ## Laufender Betrieb

@@ -3,8 +3,17 @@ const express = require('express');
 const session = require('express-session');
 const config = require('./config');
 const { loadPlaytimeData } = require('./playtimeStore');
-const { resolveMinutesForMember, computeTier, TIER_NONE, TIER_STAMMSPIELER, TIER_EHRENMITGLIED } = require('./roleSync');
+const {
+  resolveMinutesForMember,
+  computeTier,
+  listAllPlayers,
+  TIER_NONE,
+  TIER_STAMMSPIELER,
+  TIER_EHRENMITGLIED,
+} = require('./roleSync');
 const { loadLastHours } = require('./syncHistory');
+
+const MEDALS = ['🥇', '🥈', '🥉'];
 
 const DISCORD_API = 'https://discord.com/api';
 
@@ -65,7 +74,7 @@ function avatarUrl(user) {
   return 'https://cdn.discordapp.com/embed/avatars/0.png';
 }
 
-function pageShell(title, bodyHtml) {
+function pageShell(title, bodyHtml, wide = false) {
   return `<!doctype html>
 <html lang="de">
 <head>
@@ -141,12 +150,29 @@ function pageShell(title, bodyHtml) {
   .hint { color: #9098ab; font-size: 0.85rem; line-height: 1.5; }
   .logout { display: block; margin-top: 20px; color: #9098ab; font-size: 0.85rem; text-decoration: none; }
   .logout:hover { color: #e6e6ea; }
+  .card.wide { max-width: 720px; }
+  .nav { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+  .nav a { color: #9098ab; text-decoration: none; font-size: 0.85rem; padding: 6px 12px; border-radius: 8px; background: #20232f; }
+  .nav a:hover { color: #e6e6ea; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 10px; border-bottom: 1px solid #2a2e3d; font-size: 0.9rem; }
+  th { color: #9098ab; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  tr:last-child td { border-bottom: none; }
+  .rank { font-weight: 700; width: 44px; }
+  .forbidden { text-align: center; padding: 20px 0; }
 </style>
 </head>
 <body>
-  <div class="card">${bodyHtml}</div>
+  <div class="card${wide ? ' wide' : ''}">${bodyHtml}</div>
 </body>
 </html>`;
+}
+
+function navHtml(options = {}) {
+  const links = ['<a href="/top10">🏆 Top 10</a>'];
+  if (options.loggedIn) links.unshift('<a href="/">👤 Meine Zeit</a>');
+  if (options.isHighTeam) links.push('<a href="/log">📋 Team-Log</a>');
+  return `<div class="nav">${links.join('')}</div>`;
 }
 
 function renderLoginPage(error) {
@@ -154,6 +180,7 @@ function renderLoginPage(error) {
   return pageShell(
     'Spielzeit-Panel — Login',
     `
+    ${navHtml()}
     <h1>Spielzeit-Panel</h1>
     <p class="sub">Melde dich mit Discord an, um deine eigene Spielzeit auf dem Server zu sehen.</p>
     ${errorHtml}
@@ -162,11 +189,12 @@ function renderLoginPage(error) {
   );
 }
 
-function renderDashboard(discordUser, view) {
+function renderDashboard(discordUser, view, isHighTeam) {
   if (!view.found) {
     return pageShell(
       'Spielzeit-Panel',
       `
+      ${navHtml({ loggedIn: true, isHighTeam })}
       <div class="profile">
         <img src="${avatarUrl(discordUser)}" alt="Avatar">
         <div>
@@ -185,6 +213,7 @@ function renderDashboard(discordUser, view) {
   return pageShell(
     'Spielzeit-Panel',
     `
+    ${navHtml({ loggedIn: true, isHighTeam })}
     <div class="profile">
       <img src="${avatarUrl(discordUser)}" alt="Avatar">
       <div>
@@ -237,7 +266,95 @@ function buildDashboardView(discordUser) {
   return { found: true, hours, tier, progressText, progressPercent, deltaText };
 }
 
-function startWebServer() {
+function renderTop10Page(players, navOptions) {
+  const rows = players.length
+    ? players
+        .slice(0, 10)
+        .map((p, i) => {
+          const rank = MEDALS[i] || `${i + 1}.`;
+          return `<tr>
+            <td class="rank">${rank}</td>
+            <td>${escapeHtml(p.tag)}</td>
+            <td>${p.hours.toFixed(1)}h</td>
+            <td><span class="badge ${p.tier}">${TIER_LABELS[p.tier]}</span></td>
+          </tr>`;
+        })
+        .join('')
+    : '<tr><td colspan="4" class="hint">Noch keine Spielzeit-Daten gefunden.</td></tr>';
+
+  return pageShell(
+    'Top 10 Spielzeit',
+    `
+    ${navHtml(navOptions)}
+    <h1>🏆 Top 10 Spielzeit</h1>
+    <p class="sub">Die aktivsten Spieler auf dem Server.</p>
+    <table>
+      <thead><tr><th>Platz</th><th>Spieler</th><th>Stunden</th><th>Rang</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    `,
+    true
+  );
+}
+
+function renderForbiddenPage() {
+  return pageShell(
+    'Kein Zugriff',
+    `
+    ${navHtml({ loggedIn: true })}
+    <div class="forbidden">
+      <h1>Kein Zugriff</h1>
+      <p class="hint">Dieser Bereich ist dem HighTeam vorbehalten.</p>
+    </div>
+    `
+  );
+}
+
+function renderLogPage(players) {
+  const rows = players.length
+    ? players
+        .map((p) => {
+          const deltaText =
+            p.deltaHours === null || p.deltaHours === undefined
+              ? '(erster Sync)'
+              : `${p.deltaHours >= 0 ? '+' : ''}${p.deltaHours.toFixed(1)}h`;
+          return `<tr>
+            <td>${escapeHtml(p.tag)}</td>
+            <td>${p.hours.toFixed(1)}h</td>
+            <td>${deltaText}</td>
+            <td><span class="badge ${p.tier}">${TIER_LABELS[p.tier]}</span></td>
+          </tr>`;
+        })
+        .join('')
+    : '<tr><td colspan="4" class="hint">Noch keine Spielzeit-Daten gefunden.</td></tr>';
+
+  return pageShell(
+    'Team-Log',
+    `
+    ${navHtml({ loggedIn: true, isHighTeam: true })}
+    <h1>📋 Team-Log</h1>
+    <p class="sub">Alle Spieler mit erfasster Spielzeit (${players.length}).</p>
+    <table>
+      <thead><tr><th>Spieler</th><th>Stunden</th><th>Zuwachs seit letztem Sync</th><th>Rang</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    `,
+    true
+  );
+}
+
+async function fetchGuild(client) {
+  return client.guilds.fetch(config.guildId);
+}
+
+async function isHighTeamMember(client, discordId) {
+  if (!config.roleHighTeamId) return false;
+  const guild = await fetchGuild(client);
+  const member = await guild.members.fetch(discordId).catch(() => null);
+  return member ? member.roles.cache.has(config.roleHighTeamId) : false;
+}
+
+function startWebServer(client) {
   const app = express();
   app.set('trust proxy', 1);
 
@@ -250,13 +367,55 @@ function startWebServer() {
     })
   );
 
-  app.get('/', (req, res) => {
+  app.get('/', async (req, res) => {
     if (!req.session.discordUser) {
       res.send(renderLoginPage());
       return;
     }
-    const view = buildDashboardView(req.session.discordUser);
-    res.send(renderDashboard(req.session.discordUser, view));
+    try {
+      const [view, isHighTeam] = await Promise.all([
+        buildDashboardView(req.session.discordUser),
+        isHighTeamMember(client, req.session.discordUser.id),
+      ]);
+      res.send(renderDashboard(req.session.discordUser, view, isHighTeam));
+    } catch (err) {
+      console.error('[web] Fehler beim Laden von /:', err);
+      res.status(500).send('Fehler beim Laden deiner Daten. Bitte spaeter erneut versuchen.');
+    }
+  });
+
+  app.get('/top10', async (req, res) => {
+    try {
+      const guild = await fetchGuild(client);
+      const players = await listAllPlayers(guild, config);
+      const loggedIn = Boolean(req.session.discordUser);
+      const isHighTeam = loggedIn ? await isHighTeamMember(client, req.session.discordUser.id) : false;
+      res.send(renderTop10Page(players, { loggedIn, isHighTeam }));
+    } catch (err) {
+      console.error('[web] Fehler beim Laden von /top10:', err);
+      res.status(500).send('Fehler beim Laden der Top 10. Bitte spaeter erneut versuchen.');
+    }
+  });
+
+  app.get('/log', async (req, res) => {
+    if (!req.session.discordUser) {
+      req.session.postLoginRedirect = '/log';
+      res.redirect('/login');
+      return;
+    }
+    try {
+      const isHighTeam = await isHighTeamMember(client, req.session.discordUser.id);
+      if (!isHighTeam) {
+        res.status(403).send(renderForbiddenPage());
+        return;
+      }
+      const guild = await fetchGuild(client);
+      const players = await listAllPlayers(guild, config);
+      res.send(renderLogPage(players));
+    } catch (err) {
+      console.error('[web] Fehler beim Laden von /log:', err);
+      res.status(500).send('Fehler beim Laden des Team-Logs. Bitte spaeter erneut versuchen.');
+    }
   });
 
   app.get('/login', (req, res) => {
@@ -277,7 +436,9 @@ function startWebServer() {
       const token = await exchangeCodeForToken(code);
       const user = await fetchDiscordUser(token.access_token);
       req.session.discordUser = { id: user.id, username: user.global_name || user.username, avatar: user.avatar };
-      res.redirect('/');
+      const redirectTo = req.session.postLoginRedirect || '/';
+      delete req.session.postLoginRedirect;
+      res.redirect(redirectTo);
     } catch (err) {
       console.error('[web] OAuth2-Fehler:', err);
       res.status(500).send(renderLoginPage('Anmeldung fehlgeschlagen. Bitte erneut versuchen.'));

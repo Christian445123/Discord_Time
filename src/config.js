@@ -64,6 +64,8 @@ const config = {
   // Nur noetig, wenn WEB_ENABLED=true (fuer den Discord-OAuth2-Login des Webpanels).
   discordClientSecret: webEnabled ? required('DISCORD_CLIENT_SECRET') : (process.env.DISCORD_CLIENT_SECRET || '').trim(),
   sessionSecret: webEnabled ? required('SESSION_SECRET') : (process.env.SESSION_SECRET || '').trim(),
+  // Rolle, deren Mitglieder im Webpanel den Team-Log-Bereich (alle Spieler + Zeiten) sehen duerfen.
+  roleHighTeamId: webEnabled ? required('ROLE_HIGHTEAM_ID') : (process.env.ROLE_HIGHTEAM_ID || '').trim(),
 };
 
 if (config.stammspielerHours >= config.ehrenmitgliedHours) {

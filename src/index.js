@@ -6,10 +6,6 @@ const config = require('./config');
 const { syncGuildRoles } = require('./roleSync');
 const { postSyncLog } = require('./syncReport');
 
-if (config.webEnabled) {
-  require('./webServer').startWebServer();
-}
-
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
@@ -57,6 +53,10 @@ async function runSync(reason) {
 
 client.once('ready', async () => {
   console.log(`Eingeloggt als ${client.user.tag}.`);
+
+  if (config.webEnabled) {
+    require('./webServer').startWebServer(client);
+  }
 
   const cronExpression = buildCronExpression(config.syncIntervalMinutes);
   cron.schedule(cronExpression, () => runSync('geplant'));
