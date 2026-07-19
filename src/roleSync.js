@@ -145,6 +145,7 @@ async function syncGuildRoles(guild, config) {
     details: [],
     totalDeltaHours: 0,
     setupIssues: checkRoleSetup(guild, config),
+    dbSynced: null,
   };
 
   for (const issue of summary.setupIssues) console.warn(`[sync] Setup-Problem: ${issue}`);
@@ -209,7 +210,9 @@ async function syncGuildRoles(guild, config) {
   if (config.dbEnabled) {
     try {
       await upsertPlaytimeSnapshot(summary.details);
+      summary.dbSynced = true;
     } catch (err) {
+      summary.dbSynced = false;
       summary.errors.push(`Datenbank-Update fehlgeschlagen: ${err.message}`);
       console.error('[db] Konnte Spielzeit nicht speichern:', err);
     }

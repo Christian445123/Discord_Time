@@ -69,7 +69,12 @@ function buildSummaryEmbed(summary, reason, durationMs) {
       { name: 'Fehler', value: String(summary.errors.length), inline: true },
       { name: '🎮 Aktive Spieler', value: String(summary.activePlayers.length), inline: true },
       { name: 'Dauer', value: formatDuration(durationMs), inline: true },
-      { name: '⏱️ Neue Spielzeit insgesamt', value: `**${summary.totalDeltaHours.toFixed(1)}h** seit letztem Sync`, inline: true }
+      { name: '⏱️ Neue Spielzeit insgesamt', value: `**${summary.totalDeltaHours.toFixed(1)}h** seit letztem Sync`, inline: true },
+      {
+        name: '🗄️ Datenbank',
+        value: summary.dbSynced === true ? '✅ Synchronisiert' : summary.dbSynced === false ? '❌ Fehlgeschlagen' : '—',
+        inline: true,
+      }
     )
     .setTimestamp(new Date());
 
