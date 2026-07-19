@@ -343,6 +343,20 @@ function renderLogPage(players) {
   );
 }
 
+const PLAYERS_CACHE_TTL_MS = 5 * 60 * 1000;
+let _playersCache = null;
+let _playersCacheAt = 0;
+
+async function getCachedPlayers(guild, cfg) {
+  const now = Date.now();
+  if (_playersCache && now - _playersCacheAt < PLAYERS_CACHE_TTL_MS) {
+    return _playersCache;
+  }
+  _playersCache = await listAllPlayers(guild, cfg);
+  _playersCacheAt = now;
+  return _playersCache;
+}
+
 async function fetchGuild(client) {
   return client.guilds.fetch(config.guildId);
 }
@@ -387,7 +401,7 @@ function startWebServer(client) {
   app.get('/top10', async (req, res) => {
     try {
       const guild = await fetchGuild(client);
-      const players = await listAllPlayers(guild, config);
+      const players = await getCachedPlayers(guild, config);
       const loggedIn = Boolean(req.session.discordUser);
       const isHighTeam = loggedIn ? await isHighTeamMember(client, req.session.discordUser.id) : false;
       res.send(renderTop10Page(players, { loggedIn, isHighTeam }));
@@ -410,7 +424,7 @@ function startWebServer(client) {
         return;
       }
       const guild = await fetchGuild(client);
-      const players = await listAllPlayers(guild, config);
+      const players = await getCachedPlayers(guild, config);
       res.send(renderLogPage(players));
     } catch (err) {
       console.error('[web] Fehler beim Laden von /log:', err);

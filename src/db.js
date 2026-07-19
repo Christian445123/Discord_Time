@@ -15,6 +15,7 @@ function getPool() {
       database: config.dbName,
       waitForConnections: true,
       connectionLimit: 5,
+      connectTimeout: 5000,
     });
   }
   return pool;
