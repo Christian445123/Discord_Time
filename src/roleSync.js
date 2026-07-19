@@ -133,7 +133,9 @@ async function syncGuildRoles(guild, config) {
     for (const err of playtimeData.errors) console.warn(`[playtime] ${err}`);
   }
 
-  await guild.members.fetch();
+  if (guild.members.cache.size === 0) {
+    await guild.members.list({ limit: 1000 });
+  }
 
   const previousHours = loadLastHours();
   const currentHours = {};
