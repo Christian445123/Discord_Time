@@ -622,8 +622,27 @@ function startWebServer(client) {
       const isHighTeam = config.roleHighTeamId
         ? Array.isArray(guildMember?.roles) && guildMember.roles.includes(config.roleHighTeamId)
         : false;
-      req.session.discordUser = { id: user.id, username: user.global_name || user.username, avatar: user.avatar, isHighTeam };
-      logLogin(user.id, user.global_name || user.username, req.ip).catch(() => null);
+      const username = user.global_name || user.username;
+      req.session.discordUser = { id: user.id, username, avatar: user.avatar, isHighTeam };
+      logLogin(user.id, username, req.ip).catch(() => null);
+      if (config.loginLogChannelId) {
+        client.channels.fetch(config.loginLogChannelId).then((ch) => {
+          if (ch?.isTextBased()) {
+            const { EmbedBuilder } = require('discord.js');
+            const embed = new EmbedBuilder()
+              .setTitle('🔐 Web-Panel Login')
+              .setColor(isHighTeam ? 0xc4b5fd : 0x5865f2)
+              .addFields(
+                { name: 'Nutzer', value: `<@${user.id}> (${escapeHtml(username)})`, inline: true },
+                { name: 'Rolle', value: isHighTeam ? '👮 Staff' : '👤 Spieler', inline: true },
+                { name: 'IP', value: req.ip || '—', inline: true }
+              )
+              .setThumbnail(avatarUrl(user))
+              .setTimestamp();
+            ch.send({ embeds: [embed] }).catch(() => null);
+          }
+        }).catch(() => null);
+      }
       const redirectTo = req.session.postLoginRedirect || '/';
       delete req.session.postLoginRedirect;
       res.redirect(redirectTo);

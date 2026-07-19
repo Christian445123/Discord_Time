@@ -58,6 +58,7 @@ const config = {
   exclusiveRoles: optionalBool('EXCLUSIVE_ROLES', false),
   syncIntervalMinutes: optionalInt('SYNC_INTERVAL_MINUTES', 15),
   logChannelId: process.env.LOG_CHANNEL_ID ? process.env.LOG_CHANNEL_ID.trim() : null,
+  loginLogChannelId: process.env.LOGIN_LOG_CHANNEL_ID ? process.env.LOGIN_LOG_CHANNEL_ID.trim() : null,
   debug: optionalBool('DEBUG', false),
 
   webEnabled,
