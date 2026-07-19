@@ -15,6 +15,7 @@ const {
 const { loadLastHours } = require('./syncHistory');
 const { postSyncLog } = require('./syncReport');
 const { setLastSync, getLastSync } = require('./syncState');
+const { getAllPlayers, getPlayerByDiscordId } = require('./db');
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -266,13 +267,29 @@ function renderDashboard(discordUser, view, isHighTeam) {
   );
 }
 
-function buildDashboardView(discordUser) {
+async function buildDashboardView(discordUser) {
+  if (config.dbEnabled) {
+    try {
+      const player = await getPlayerByDiscordId(discordUser.id);
+      if (player !== null) {
+        const { hours, tier, deltaHours } = player;
+        return buildViewFromHours(hours, tier, deltaHours);
+      }
+    } catch (err) {
+      console.error('[web] DB-Einzelabfrage fehlgeschlagen, Fallback:', err.message);
+    }
+  }
   const playtimeData = loadPlaytimeData(config);
   const minutes = resolveMinutesForMember(discordUser.id, playtimeData);
   if (minutes === null) return { found: false };
-
   const hours = minutes / 60;
   const tier = computeTier(hours, config);
+  const lastSyncHours = loadLastHours()[discordUser.id];
+  const deltaHours = typeof lastSyncHours === 'number' ? hours - lastSyncHours : null;
+  return buildViewFromHours(hours, tier, deltaHours);
+}
+
+function buildViewFromHours(hours, tier, deltaHours) {
 
   let progressText;
   let progressPercent;
@@ -290,10 +307,8 @@ function buildDashboardView(discordUser) {
   }
 
   let deltaText = null;
-  const lastSyncHours = loadLastHours()[discordUser.id];
-  if (typeof lastSyncHours === 'number') {
-    const delta = hours - lastSyncHours;
-    if (delta > 0) deltaText = `Seit dem letzten Rollen-Sync: +${delta.toFixed(1)}h`;
+  if (typeof deltaHours === 'number' && deltaHours > 0) {
+    deltaText = `Seit dem letzten Rollen-Sync: +${deltaHours.toFixed(1)}h`;
   }
 
   return { found: true, hours, tier, progressText, progressPercent, deltaText };
@@ -473,12 +488,24 @@ const PLAYERS_CACHE_TTL_MS = 5 * 60 * 1000;
 let _playersCache = null;
 let _playersCacheAt = 0;
 
-async function getCachedPlayers(guild, cfg) {
+async function getPlayersForWeb(guild) {
   const now = Date.now();
   if (_playersCache && now - _playersCacheAt < PLAYERS_CACHE_TTL_MS) {
     return _playersCache;
   }
-  _playersCache = await listAllPlayers(guild, cfg);
+  if (config.dbEnabled) {
+    try {
+      const rows = await getAllPlayers();
+      if (rows !== null) {
+        _playersCache = rows;
+        _playersCacheAt = now;
+        return _playersCache;
+      }
+    } catch (err) {
+      console.error('[web] DB-Abfrage fehlgeschlagen, Fallback auf Cache:', err.message);
+    }
+  }
+  _playersCache = await listAllPlayers(guild, config);
   _playersCacheAt = now;
   return _playersCache;
 }
@@ -510,7 +537,7 @@ function startWebServer(client) {
       return;
     }
     try {
-      const view = buildDashboardView(req.session.discordUser);
+      const view = await buildDashboardView(req.session.discordUser);
       const isHighTeam = isHighTeamMember(req.session.discordUser);
       res.send(renderDashboard(req.session.discordUser, view, isHighTeam));
     } catch (err) {
@@ -522,7 +549,7 @@ function startWebServer(client) {
   app.get('/top10', async (req, res) => {
     try {
       const guild = await fetchGuild(client);
-      const players = await getCachedPlayers(guild, config);
+      const players = await getPlayersForWeb(guild);
       const loggedIn = Boolean(req.session.discordUser);
       const isHighTeam = loggedIn ? isHighTeamMember(req.session.discordUser) : false;
       res.send(renderTop10Page(players, { loggedIn, isHighTeam }));
@@ -544,7 +571,7 @@ function startWebServer(client) {
     }
     try {
       const guild = await fetchGuild(client);
-      const players = await getCachedPlayers(guild, config);
+      const players = await getPlayersForWeb(guild);
       res.send(renderLogPage(players));
     } catch (err) {
       console.error('[web] Fehler beim Laden von /log:', err);

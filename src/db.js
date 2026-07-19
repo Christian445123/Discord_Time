@@ -42,11 +42,6 @@ async function initDb() {
   console.log('[db] Verbindung hergestellt, Tabelle "playtime_stats" bereit.');
 }
 
-/**
- * Schreibt die aktuelle Spielzeit-Momentaufnahme (ein Datensatz pro Spieler)
- * in die Datenbank. Bestehende Zeilen (gleiche discord_id) werden dabei
- * aktualisiert (Upsert) statt dupliziert.
- */
 async function upsertPlaytimeSnapshot(details) {
   if (!config.dbEnabled || !details.length) return;
 
@@ -66,4 +61,35 @@ async function upsertPlaytimeSnapshot(details) {
   );
 }
 
-module.exports = { initDb, upsertPlaytimeSnapshot };
+async function getAllPlayers() {
+  if (!config.dbEnabled) return null;
+  const [rows] = await getPool().query(
+    `SELECT discord_id, discord_tag, hours, tier, delta_hours FROM ${TABLE} ORDER BY hours DESC`
+  );
+  return rows.map((r) => ({
+    id: r.discord_id,
+    tag: r.discord_tag,
+    hours: parseFloat(r.hours),
+    tier: r.tier,
+    deltaHours: r.delta_hours !== null ? parseFloat(r.delta_hours) : null,
+  }));
+}
+
+async function getPlayerByDiscordId(discordId) {
+  if (!config.dbEnabled) return null;
+  const [rows] = await getPool().query(
+    `SELECT discord_id, discord_tag, hours, tier, delta_hours FROM ${TABLE} WHERE discord_id = ?`,
+    [discordId]
+  );
+  if (!rows.length) return null;
+  const r = rows[0];
+  return {
+    id: r.discord_id,
+    tag: r.discord_tag,
+    hours: parseFloat(r.hours),
+    tier: r.tier,
+    deltaHours: r.delta_hours !== null ? parseFloat(r.delta_hours) : null,
+  };
+}
+
+module.exports = { initDb, upsertPlaytimeSnapshot, getAllPlayers, getPlayerByDiscordId };
