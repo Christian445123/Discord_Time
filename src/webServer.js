@@ -734,7 +734,7 @@ function startWebServer(client) {
     <h1>🔒 Datenschutzerklaerung</h1>
     <div class="hint" style="line-height:1.9;">
       <strong>1. Verantwortlicher</strong><br>
-      [Name und Kontakt des Betreibers &ndash; siehe Impressum]<br><br>
+      ViennaStateRP &ndash; siehe Impressum<br><br>
 
       <strong>2. Welche Daten werden verarbeitet?</strong><br>
       Beim Einloggen &uuml;ber Discord OAuth2 werden folgende Daten verarbeitet:<br>
