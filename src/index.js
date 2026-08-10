@@ -12,6 +12,21 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
 
+// Verhindert, dass einzelne Verbindungs-/Gateway-Fehler den ganzen Prozess crashen
+// (discord.js versucht die Gateway-Verbindung ohnehin automatisch wiederherzustellen).
+client.on('error', (err) => console.error('[discord] Client-Fehler:', err));
+client.on('shardError', (err) => console.error('[discord] Shard-Fehler:', err));
+client.on('shardDisconnect', (event, shardId) => console.warn(`[discord] Shard ${shardId} getrennt (Code ${event.code}).`));
+client.on('shardReconnecting', (shardId) => console.warn(`[discord] Shard ${shardId} verbindet neu ...`));
+
+// Unerwartete, aber nicht-fatale Fehler nur loggen statt den Prozess zu beenden.
+process.on('unhandledRejection', (reason) => console.error('[process] Unhandled Rejection:', reason));
+// Bei wirklich fatalen Fehlern sauber beenden, damit pm2 (autorestart) den Prozess neu startet.
+process.on('uncaughtException', (err) => {
+  console.error('[process] Uncaught Exception, Prozess wird neu gestartet:', err);
+  process.exit(1);
+});
+
 client.commands = new Collection();
 const commandsDir = path.join(__dirname, 'commands');
 for (const file of fs.readdirSync(commandsDir).filter((f) => f.endsWith('.js'))) {
