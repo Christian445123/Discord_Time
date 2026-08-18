@@ -89,6 +89,8 @@ automatisch alle `SYNC_INTERVAL_MINUTES` Minuten.
 | `/top10` | Zeigt die Top 10 Spieler nach Spielzeit mit Platzierung | Alle |
 | `/link @mitglied <license>` | Verknuepft Discord-Account manuell mit FiveM-License | Manage Roles |
 | `/unlink @mitglied` | Entfernt manuelle Verknuepfung | Manage Roles |
+| `/exclude @mitglied` | Entfernt ein Mitglied komplett aus der Zeitauflistung (`/playtime`, `/top10`, Sync, Webpanel) | Manage Roles |
+| `/include @mitglied` | Nimmt ein zuvor mit `/exclude` entferntes Mitglied wieder auf | Manage Roles |
 | `/synctime` | Erzwingt sofortigen Rollen-Abgleich | Manage Roles |
 
 ## Log-Channel
@@ -154,6 +156,12 @@ Optional gibt es ein kleines Webpanel mit Discord-Login und drei Bereichen:
 | `/` | Jeden nach Login | **Nur die eigene** Spielzeit, Stufe, Fortschritt zur naechsten Rolle (wie `/playtime`) |
 | `/top10` | **Alle**, auch ohne Login | Top 10 Spieler nach Spielzeit mit Platzierung (wie `/top10` im Discord) |
 | `/log` | Nur Mitglieder der `ROLE_HIGHTEAM_ID`-Rolle | Team-Log: **alle** erfassten Spieler mit Spielzeit, Zuwachs seit letztem Sync und Stufe |
+
+Im `/log`-Bereich kann das HighTeam Spieler ueber den Button
+"Ausschliessen" direkt in der Tabelle komplett aus der Zeitauflistung
+entfernen (Discord-Aequivalent: `/exclude`). Ausgeschlossene Spieler
+werden in einer eigenen Liste mit "Einschliessen"-Button angezeigt, um
+die Ausnahme jederzeit rueckgaengig zu machen.
 
 `/` bleibt streng privat (ein Nutzer sieht ausschliesslich seine eigenen
 Daten), `/top10` ist bewusst oeffentlich fuer alle, `/log` ist nur fuer das

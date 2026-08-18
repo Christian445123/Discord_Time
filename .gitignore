@@ -2,4 +2,5 @@ node_modules/
 .env
 data/links.json
 data/lastSync.json
+data/excludes.json
 npm-debug.log

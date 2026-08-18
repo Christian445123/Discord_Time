@@ -183,4 +183,31 @@ async function postSyncLog(client, config, summary, reason, durationMs) {
   await sendEmbedBatches(channel, buildPlayerEmbeds(summary), 'Spielerliste');
 }
 
-module.exports = { postSyncLog };
+/**
+ * Postet in den konfigurierten Log-Channel, wenn ein Mitglied per /exclude
+ * (Discord) oder ueber das Webpanel komplett aus der Zeitauflistung entfernt
+ * oder wieder aufgenommen wird - unabhaengig vom naechsten Sync, damit die
+ * Aenderung sofort im Log nachvollziehbar ist.
+ */
+async function postExcludeLog(client, config, { discordId, action, actorLabel }) {
+  if (!config.logChannelId) return;
+
+  const channel = await client.channels.fetch(config.logChannelId).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const isExclude = action === 'exclude';
+  const embed = new EmbedBuilder()
+    .setColor(isExclude ? 0xe74c3c : 0x2ecc71)
+    .setTitle(isExclude ? '🚫 Spieler aus Zeitauflistung entfernt' : '✅ Spieler wieder in Zeitauflistung aufgenommen')
+    .addFields(
+      { name: 'Mitglied', value: `<@${discordId}> (${discordId})`, inline: true },
+      { name: 'Von', value: actorLabel, inline: true }
+    )
+    .setTimestamp(new Date());
+
+  await channel.send({ embeds: [embed] }).catch((err) => {
+    console.error('[sync] Konnte Ausschluss-Log nicht senden:', err);
+  });
+}
+
+module.exports = { postSyncLog, postExcludeLog };

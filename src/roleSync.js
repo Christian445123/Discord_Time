@@ -1,6 +1,7 @@
 const { PermissionFlagsBits } = require('discord.js');
 const { loadPlaytimeData } = require('./playtimeStore');
 const { getLink } = require('./linkStore');
+const { isExcluded } = require('./excludeStore');
 const { loadLastHours, saveLastHours } = require('./syncHistory');
 const { upsertPlaytimeSnapshot } = require('./db');
 
@@ -20,9 +21,14 @@ function computeTier(hours, config) {
  *    (automatisch, sofern der Spieler seinen Discord im Spiel verknuepft hat).
  * 2. Fallback ueber eine manuelle Verknuepfung (/link), die auf eine
  *    FiveM-License in der playersDB verweist.
- * Gibt null zurueck, wenn fuer das Mitglied ueberhaupt keine Daten vorliegen.
+ * Gibt null zurueck, wenn fuer das Mitglied ueberhaupt keine Daten vorliegen,
+ * oder wenn das Mitglied per /entfernen bewusst aus der Zeitauflistung
+ * ausgeschlossen wurde.
  */
 function resolveMinutesForMember(discordId, playtimeData) {
+  if (isExcluded(discordId)) {
+    return null;
+  }
   if (playtimeData.byDiscordId.has(discordId)) {
     return playtimeData.byDiscordId.get(discordId);
   }

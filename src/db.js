@@ -102,6 +102,11 @@ async function getAllPlayers() {
   }));
 }
 
+async function deletePlayerRecord(discordId) {
+  if (!config.dbEnabled) return;
+  await getPool().query(`DELETE FROM ${TABLE} WHERE discord_id = ?`, [discordId]);
+}
+
 async function getPlayerByDiscordId(discordId) {
   if (!config.dbEnabled) return null;
   const [rows] = await getPool().query(
@@ -119,4 +124,12 @@ async function getPlayerByDiscordId(discordId) {
   };
 }
 
-module.exports = { initDb, upsertPlaytimeSnapshot, getAllPlayers, getPlayerByDiscordId, logLogin, getRecentLogins };
+module.exports = {
+  initDb,
+  upsertPlaytimeSnapshot,
+  getAllPlayers,
+  getPlayerByDiscordId,
+  deletePlayerRecord,
+  logLogin,
+  getRecentLogins,
+};

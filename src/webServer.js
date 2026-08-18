@@ -13,9 +13,10 @@ const {
   TIER_EHRENMITGLIED,
 } = require('./roleSync');
 const { loadLastHours } = require('./syncHistory');
-const { postSyncLog } = require('./syncReport');
+const { postSyncLog, postExcludeLog } = require('./syncReport');
 const { setLastSync, getLastSync } = require('./syncState');
-const { getAllPlayers, getPlayerByDiscordId, logLogin, getRecentLogins } = require('./db');
+const { getAllPlayers, getPlayerByDiscordId, deletePlayerRecord, logLogin, getRecentLogins } = require('./db');
+const { addExclude, removeExclude, listExcludedIds } = require('./excludeStore');
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -191,6 +192,13 @@ function pageShell(title, bodyHtml, wide = false) {
   .sync-btn:hover { background: #3a6349; }
   .sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .sync-result { margin-top: 8px; font-size: 0.85rem; }
+  .row-btn { padding: 5px 12px; border-radius: 6px; border: none; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+  .row-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .row-btn.exclude { background: #4d1f24; color: #f28b8b; }
+  .row-btn.exclude:hover { background: #63272e; }
+  .row-btn.include { background: #2f4d3a; color: #6fe39b; }
+  .row-btn.include:hover { background: #3a6349; }
+  .action-col { width: 130px; text-align: right; }
 </style>
 </head>
 <body>
@@ -358,7 +366,7 @@ function renderForbiddenPage() {
   );
 }
 
-function renderLogPage(players, logins = []) {
+function renderLogPage(players, logins = [], excludedPlayers = []) {
   const ehrenCount = players.filter((p) => p.tier === TIER_EHRENMITGLIED).length;
   const stammCount = players.filter((p) => p.tier === TIER_STAMMSPIELER).length;
   const totalHours = players.reduce((sum, p) => sum + p.hours, 0);
@@ -406,10 +414,23 @@ function renderLogPage(players, logins = []) {
             <td>${p.hours.toFixed(1)}h</td>
             <td>${deltaText}</td>
             <td><span class="badge ${p.tier}">${TIER_LABELS[p.tier]}</span></td>
+            <td class="action-col"><button class="row-btn exclude" onclick="excludePlayer('${p.id}', '${escapeHtml(p.tag).replace(/'/g, "\\'")}', this)">Ausschliessen</button></td>
           </tr>`;
         })
         .join('')
-    : '<tr><td colspan="4" class="hint">Noch keine Spielzeit-Daten gefunden.</td></tr>';
+    : '<tr><td colspan="5" class="hint">Noch keine Spielzeit-Daten gefunden.</td></tr>';
+
+  const excludedRows = excludedPlayers.length
+    ? excludedPlayers
+        .map(
+          (p) => `<tr>
+            <td>${escapeHtml(p.tag)}</td>
+            <td style="font-size:0.8rem;color:#9098ab;">${escapeHtml(p.id)}</td>
+            <td class="action-col"><button class="row-btn include" onclick="includePlayer('${p.id}', this)">Einschliessen</button></td>
+          </tr>`
+        )
+        .join('')
+    : '<tr><td colspan="3" class="hint">Keine Spieler ausgeschlossen.</td></tr>';
 
   return pageShell(
     'Admin Dashboard',
@@ -469,9 +490,59 @@ function renderLogPage(players, logins = []) {
     <h2>👥 Alle Spieler (${players.length})</h2>
     <input class="search-bar" id="playerSearch" placeholder="Spieler suchen ..." oninput="filterTable(this.value)">
     <table id="allPlayersTable">
-      <thead><tr><th>Spieler</th><th>Stunden</th><th>Zuwachs seit letztem Sync</th><th>Rang</th></tr></thead>
+      <thead><tr><th>Spieler</th><th>Stunden</th><th>Zuwachs seit letztem Sync</th><th>Rang</th><th></th></tr></thead>
       <tbody>${allRows}</tbody>
     </table>
+
+    <h2>🚫 Ausgeschlossene Spieler (${excludedPlayers.length})</h2>
+    <p class="hint">Diese Mitglieder werden bei /playtime, /top10, dem Rollen-Sync und in der Spieler-Uebersicht nicht mehr beruecksichtigt.</p>
+    <table id="excludedPlayersTable">
+      <thead><tr><th>Spieler</th><th>Discord-ID</th><th></th></tr></thead>
+      <tbody>${excludedRows}</tbody>
+    </table>
+    <script>
+      async function excludePlayer(discordId, tag, btn) {
+        if (!confirm('"' + tag + '" wirklich komplett aus der Zeitauflistung entfernen?')) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch('/staff/exclude', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ discordId }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            location.reload();
+          } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            btn.disabled = false;
+          }
+        } catch (e) {
+          alert('Verbindungsfehler.');
+          btn.disabled = false;
+        }
+      }
+      async function includePlayer(discordId, btn) {
+        btn.disabled = true;
+        try {
+          const res = await fetch('/staff/include', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ discordId }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            location.reload();
+          } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            btn.disabled = false;
+          }
+        } catch (e) {
+          alert('Verbindungsfehler.');
+          btn.disabled = false;
+        }
+      }
+    </script>
 
     <h2>🔐 Login-Log (letzte 50)</h2>
     <input class="search-bar" id="loginSearch" placeholder="Spieler oder IP suchen ..." oninput="filterLogin(this.value)">
@@ -527,6 +598,19 @@ async function getPlayersForWeb(guild) {
   return _playersCache;
 }
 
+async function getExcludedPlayersForWeb(guild) {
+  const ids = listExcludedIds();
+  const result = [];
+  for (const id of ids) {
+    let member = guild.members.cache.get(id);
+    if (!member) {
+      member = await guild.members.fetch(id).catch(() => null);
+    }
+    result.push({ id, tag: member ? member.user.tag : `Unbekannt (${id})` });
+  }
+  return result;
+}
+
 async function fetchGuild(client) {
   return client.guilds.fetch(config.guildId);
 }
@@ -539,6 +623,7 @@ function startWebServer(client) {
   const app = express();
   app.set('trust proxy', 1);
 
+  app.use(express.json());
   app.use(
     session({
       secret: config.sessionSecret,
@@ -588,11 +673,12 @@ function startWebServer(client) {
     }
     try {
       const guild = await fetchGuild(client);
-      const [players, logins] = await Promise.all([
+      const [players, logins, excludedPlayers] = await Promise.all([
         getPlayersForWeb(guild),
         getRecentLogins(50).catch(() => []),
+        getExcludedPlayersForWeb(guild),
       ]);
-      res.send(renderLogPage(players, logins));
+      res.send(renderLogPage(players, logins, excludedPlayers));
     } catch (err) {
       console.error('[web] Fehler beim Laden von /log:', err);
       res.status(500).send('Fehler beim Laden des Staff-Dashboards. Bitte spaeter erneut versuchen.');
@@ -793,6 +879,53 @@ function startWebServer(client) {
       res.status(500).json({ ok: false, error: err.message });
     } finally {
       _isSyncing = false;
+    }
+  });
+
+  app.post('/staff/exclude', async (req, res) => {
+    if (!req.session.discordUser || !isHighTeamMember(req.session.discordUser)) {
+      return res.status(403).json({ ok: false, error: 'Kein Zugriff.' });
+    }
+    const { discordId } = req.body || {};
+    if (typeof discordId !== 'string' || !/^\d+$/.test(discordId)) {
+      return res.status(400).json({ ok: false, error: 'Ungueltige Discord-ID.' });
+    }
+    try {
+      addExclude(discordId);
+      await deletePlayerRecord(discordId).catch(() => null);
+      _playersCache = null;
+      await postExcludeLog(client, config, {
+        discordId,
+        action: 'exclude',
+        actorLabel: `${req.session.discordUser.username} (Webpanel)`,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[web] Fehler beim Ausschliessen:', err);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/staff/include', async (req, res) => {
+    if (!req.session.discordUser || !isHighTeamMember(req.session.discordUser)) {
+      return res.status(403).json({ ok: false, error: 'Kein Zugriff.' });
+    }
+    const { discordId } = req.body || {};
+    if (typeof discordId !== 'string' || !/^\d+$/.test(discordId)) {
+      return res.status(400).json({ ok: false, error: 'Ungueltige Discord-ID.' });
+    }
+    try {
+      removeExclude(discordId);
+      _playersCache = null;
+      await postExcludeLog(client, config, {
+        discordId,
+        action: 'include',
+        actorLabel: `${req.session.discordUser.username} (Webpanel)`,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[web] Fehler beim Einschliessen:', err);
+      res.status(500).json({ ok: false, error: err.message });
     }
   });
 
