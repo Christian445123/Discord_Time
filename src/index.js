@@ -19,6 +19,29 @@ client.on('shardError', (err) => console.error('[discord] Shard-Fehler:', err));
 client.on('shardDisconnect', (event, shardId) => console.warn(`[discord] Shard ${shardId} getrennt (Code ${event.code}).`));
 client.on('shardReconnecting', (shardId) => console.warn(`[discord] Shard ${shardId} verbindet neu ...`));
 
+// Watchdog: prueft regelmaessig, ob die Gateway-Verbindung noch "ready" ist.
+// discord.js versucht zwar selbst zu reconnecten, aber bei einer "zombie"
+// Verbindung (Socket offen, aber keine Events mehr) hilft nur ein harter
+// Neustart - pm2 (autorestart: true) uebernimmt danach den Neustart.
+const WATCHDOG_INTERVAL_MS = 2 * 60 * 1000; // alle 2 Minuten pruefen
+const WATCHDOG_MAX_UNREADY_MS = 5 * 60 * 1000; // 5 Minuten am Stueck nicht bereit -> Neustart
+let unreadySince = null;
+setInterval(() => {
+  if (client.isReady()) {
+    unreadySince = null;
+    return;
+  }
+  if (!unreadySince) {
+    unreadySince = Date.now();
+    console.warn('[watchdog] Client ist nicht bereit, beobachte ...');
+    return;
+  }
+  if (Date.now() - unreadySince > WATCHDOG_MAX_UNREADY_MS) {
+    console.error(`[watchdog] Client seit ueber ${WATCHDOG_MAX_UNREADY_MS / 60000} Minuten nicht bereit. Prozess wird neu gestartet.`);
+    process.exit(1);
+  }
+}, WATCHDOG_INTERVAL_MS);
+
 // Unerwartete, aber nicht-fatale Fehler nur loggen statt den Prozess zu beenden.
 process.on('unhandledRejection', (reason) => console.error('[process] Unhandled Rejection:', reason));
 // Bei wirklich fatalen Fehlern sauber beenden, damit pm2 (autorestart) den Prozess neu startet.

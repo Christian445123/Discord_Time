@@ -269,3 +269,18 @@ npm install -g pm2
 pm2 start src/index.js --name fivem-playtime-bot
 pm2 save
 ```
+
+### Automatischer Neustart
+
+Damit Slash-Commands nicht dauerhaft ausfallen, falls sich der Bot mal
+"aufhaengt", gibt es zwei sich ergaenzende Mechanismen:
+
+1. **Taeglicher Neustart um Mitternacht (Wien-Zeit)**: ueber pm2s
+   `cron_restart` in `ecosystem.config.js`. Damit das greift, muss der Bot
+   ueber diese Konfig gestartet sein: `pm2 start ecosystem.config.js`. Nach
+   Aenderungen an der Datei einmalig `pm2 startOrReload ecosystem.config.js`
+   ausfuehren.
+2. **Watchdog im Bot selbst**: prueft alle 2 Minuten, ob die Discord-Verbindung
+   noch "ready" ist. Ist sie es 5 Minuten am Stueck nicht mehr (z.B. bei einer
+   haengenden "Zombie"-Verbindung), beendet sich der Prozess selbst - pm2
+   (`autorestart: true`) startet ihn danach automatisch neu.
