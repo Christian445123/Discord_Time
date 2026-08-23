@@ -1,5 +1,3 @@
-const fs = require('fs');
-const path = require('path');
 const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const cron = require('node-cron');
 const config = require('./config');
@@ -7,6 +5,8 @@ const { syncGuildRoles } = require('./roleSync');
 const { postSyncLog } = require('./syncReport');
 const { initDb } = require('./db');
 const { setLastSync } = require('./syncState');
+const { loadCommands } = require('./loadCommands');
+const { deployCommands } = require('./deploy-commands');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
@@ -18,6 +18,12 @@ client.on('error', (err) => console.error('[discord] Client-Fehler:', err));
 client.on('shardError', (err) => console.error('[discord] Shard-Fehler:', err));
 client.on('shardDisconnect', (event, shardId) => console.warn(`[discord] Shard ${shardId} getrennt (Code ${event.code}).`));
 client.on('shardReconnecting', (shardId) => console.warn(`[discord] Shard ${shardId} verbindet neu ...`));
+// 'invalidated' feuert, wenn die Session nicht mehr reparierbar ist (discord.js
+// kann hier nicht mehr selbst reconnecten) - nur ein kompletter Neustart hilft.
+client.on('invalidated', () => {
+  console.error('[discord] Session invalidiert, Prozess wird neu gestartet.');
+  process.exit(1);
+});
 
 // Watchdog: prueft regelmaessig, ob die Gateway-Verbindung noch "ready" ist.
 // discord.js versucht zwar selbst zu reconnecten, aber bei einer "zombie"
@@ -51,9 +57,7 @@ process.on('uncaughtException', (err) => {
 });
 
 client.commands = new Collection();
-const commandsDir = path.join(__dirname, 'commands');
-for (const file of fs.readdirSync(commandsDir).filter((f) => f.endsWith('.js'))) {
-  const command = require(path.join(commandsDir, file));
+for (const command of loadCommands()) {
   client.commands.set(command.data.name, command);
 }
 
@@ -94,6 +98,15 @@ async function runSync(reason) {
 
 client.once('ready', async () => {
   console.log(`Eingeloggt als ${client.user.tag}.`);
+
+  // Registriert die Slash-Commands bei jedem Start neu, damit sie nie manuell
+  // per "npm run deploy-commands" nachgezogen werden muessen und immer zum
+  // aktuell laufenden Code passen.
+  try {
+    await deployCommands();
+  } catch (err) {
+    console.error('[deploy] Slash-Commands konnten nicht registriert werden:', err);
+  }
 
   if (config.dbEnabled) {
     try {
