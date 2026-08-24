@@ -124,6 +124,19 @@ client.once('ready', async () => {
   cron.schedule(cronExpression, () => runSync('geplant'));
   console.log(`Automatischer Sync geplant: alle ${config.syncIntervalMinutes} Minuten (Cron: "${cronExpression}").`);
 
+  // Registriert die Slash-Commands zusaetzlich zum Start auch 2x taeglich neu
+  // (06:00 und 18:00), falls sie sich zwischenzeitlich z.B. durch einen
+  // Discord-Bug oder manuelle Aenderungen im Developer Portal verabschieden.
+  cron.schedule('0 6,18 * * *', async () => {
+    try {
+      const count = await deployCommands();
+      console.log(`[deploy] Slash-Commands geplant neu registriert (${count}).`);
+    } catch (err) {
+      console.error('[deploy] Geplante Neu-Registrierung der Slash-Commands fehlgeschlagen:', err);
+    }
+  });
+  console.log('Automatische Command-Wiederherstellung geplant: taeglich um 06:00 und 18:00 Uhr.');
+
   await runSync('start');
 });
 
