@@ -1,7 +1,12 @@
 const crypto = require('crypto');
+const path = require('path');
+const util = require('util');
+const { execFile } = require('child_process');
 const express = require('express');
 const session = require('express-session');
+const { EmbedBuilder } = require('discord.js');
 const config = require('./config');
+const { deployCommands } = require('./deploy-commands');
 const { loadPlaytimeData } = require('./playtimeStore');
 const {
   resolveMinutesForMember,
@@ -441,7 +446,13 @@ function renderLogPage(players, logins = [], excludedPlayers = []) {
 
     <div style="margin-bottom:20px;">
       <button id="syncBtn" class="sync-btn" onclick="triggerSync()">🔄 Sync starten</button>
+      <button id="redeployBtn" class="sync-btn" style="background:#2f3d4d;color:#7ec4f1;" onclick="triggerRedeploy()">🔁 Commands wiederherstellen</button>
+      <button id="deployBtn" class="sync-btn" style="background:#3d2f4d;color:#c4a3f1;" onclick="triggerDeploy()">🚀 Deployen (git pull)</button>
+      <button id="restartBtn" class="sync-btn" style="background:#4d1f24;color:#f28b8b;" onclick="triggerRestart()">♻️ Bot neustarten</button>
       <div id="syncResult" class="sync-result hint"></div>
+      <div id="redeployResult" class="sync-result hint"></div>
+      <div id="deployResult" class="sync-result hint" style="white-space:pre-wrap;font-family:monospace;"></div>
+      <div id="restartResult" class="sync-result hint"></div>
     </div>
 
     <h2>🕒 Letzter Sync</h2>
@@ -471,6 +482,93 @@ function renderLogPage(players, logins = [], excludedPlayers = []) {
         }
         btn.disabled = false;
         btn.textContent = '🔄 Sync starten';
+      }
+
+      async function triggerRedeploy() {
+        const btn = document.getElementById('redeployBtn');
+        const result = document.getElementById('redeployResult');
+        btn.disabled = true;
+        btn.textContent = '⏳ Registriere ...';
+        result.textContent = '';
+        result.style.color = '';
+        try {
+          const res = await fetch('/staff/redeploy-commands', { method: 'POST' });
+          const data = await res.json();
+          if (data.ok) {
+            result.style.color = '#6fe39b';
+            result.textContent = '✅ ' + data.count + ' Slash-Commands neu registriert.';
+          } else {
+            result.style.color = '#e74c3c';
+            result.textContent = '❌ ' + (data.error || 'Unbekannter Fehler');
+          }
+        } catch (e) {
+          result.style.color = '#e74c3c';
+          result.textContent = '❌ Verbindungsfehler';
+        }
+        btn.disabled = false;
+        btn.textContent = '🔁 Commands wiederherstellen';
+      }
+
+      async function triggerDeploy() {
+        if (!confirm('Neuesten Stand aus dem Git-Repository laden (git pull)? Falls es Aenderungen gibt, startet der Bot danach automatisch neu.')) return;
+        const btn = document.getElementById('deployBtn');
+        const result = document.getElementById('deployResult');
+        btn.disabled = true;
+        btn.textContent = '⏳ Deploye ...';
+        result.textContent = '';
+        result.style.color = '';
+        try {
+          const res = await fetch('/staff/deploy', { method: 'POST' });
+          const data = await res.json();
+          if (data.ok) {
+            result.style.color = data.npmInstallError ? '#e74c3c' : '#6fe39b';
+            let text = data.output || '(keine Ausgabe)';
+            if (data.npmInstallRan) text += '\n\nnpm install erfolgreich ausgefuehrt.';
+            if (data.npmInstallError) text += '\n\nnpm install fehlgeschlagen:\n' + data.npmInstallError + '\n\nBot wurde NICHT neugestartet.';
+            if (data.restarting) text += '\n\nBot startet neu, Seite laedt in Kuerze neu ...';
+            result.textContent = text;
+            if (data.restarting) setTimeout(() => location.reload(), 8000);
+          } else {
+            result.style.color = '#e74c3c';
+            result.textContent = '❌ ' + (data.error || 'Unbekannter Fehler');
+          }
+        } catch (e) {
+          result.style.color = '#e74c3c';
+          result.textContent = '❌ Verbindungsfehler';
+        }
+        if (!result.textContent.includes('startet neu')) {
+          btn.disabled = false;
+          btn.textContent = '🚀 Deployen (git pull)';
+        }
+      }
+
+      async function triggerRestart() {
+        if (!confirm('Bot wirklich neustarten? Er ist danach fuer wenige Sekunden nicht erreichbar.')) return;
+        const btn = document.getElementById('restartBtn');
+        const result = document.getElementById('restartResult');
+        btn.disabled = true;
+        btn.textContent = '⏳ Neustart wird ausgeloest ...';
+        result.textContent = '';
+        result.style.color = '';
+        try {
+          const res = await fetch('/staff/restart', { method: 'POST' });
+          const data = await res.json();
+          if (data.ok) {
+            result.style.color = '#6fe39b';
+            result.textContent = '✅ Neustart ausgeloest. Seite laedt in Kuerze neu ...';
+            setTimeout(() => location.reload(), 8000);
+          } else {
+            result.style.color = '#e74c3c';
+            result.textContent = '❌ ' + (data.error || 'Unbekannter Fehler');
+            btn.disabled = false;
+            btn.textContent = '♻️ Bot neustarten';
+          }
+        } catch (e) {
+          result.style.color = '#e74c3c';
+          result.textContent = '❌ Verbindungsfehler';
+          btn.disabled = false;
+          btn.textContent = '♻️ Bot neustarten';
+        }
       }
     </script>
 
@@ -617,6 +715,42 @@ async function fetchGuild(client) {
 
 function isHighTeamMember(discordUser) {
   return Boolean(discordUser?.isHighTeam);
+}
+
+const execFileAsync = util.promisify(execFile);
+const REPO_ROOT = path.join(__dirname, '..');
+const GIT_EXEC_OPTS = { cwd: REPO_ROOT, timeout: 60000, maxBuffer: 5 * 1024 * 1024 };
+
+/**
+ * Zieht den neuesten Stand vom konfigurierten Git-Remote (nur Fast-Forward,
+ * damit bei divergierender History oder lokalen Aenderungen sauber
+ * abgebrochen wird statt etwas zu ueberschreiben oder zu mergen). Wenn sich
+ * package.json/package-lock.json im Diff befinden, wird automatisch
+ * "npm install" nachgezogen, damit der anschliessende Neustart nicht wegen
+ * fehlender Abhaengigkeiten fehlschlaegt.
+ */
+async function runGitDeploy() {
+  const before = (await execFileAsync('git', ['rev-parse', 'HEAD'], GIT_EXEC_OPTS)).stdout.trim();
+  const pull = await execFileAsync('git', ['pull', '--ff-only'], GIT_EXEC_OPTS);
+  const output = `${pull.stdout}${pull.stderr}`.trim();
+  const after = (await execFileAsync('git', ['rev-parse', 'HEAD'], GIT_EXEC_OPTS)).stdout.trim();
+  const changed = before !== after;
+
+  let npmInstallRan = false;
+  let npmInstallError = null;
+  if (changed) {
+    const { stdout: changedFiles } = await execFileAsync('git', ['diff', '--name-only', before, after], GIT_EXEC_OPTS);
+    if (/(^|\/)package(-lock)?\.json$/m.test(changedFiles)) {
+      try {
+        await execFileAsync('npm', ['install', '--omit=dev'], { ...GIT_EXEC_OPTS, timeout: 5 * 60 * 1000 });
+        npmInstallRan = true;
+      } catch (err) {
+        npmInstallError = (err.stderr || err.message || '').toString().slice(0, 1500);
+      }
+    }
+  }
+
+  return { changed, output, npmInstallRan, npmInstallError };
 }
 
 function startWebServer(client) {
@@ -880,6 +1014,100 @@ function startWebServer(client) {
     } finally {
       _isSyncing = false;
     }
+  });
+
+  app.post('/staff/redeploy-commands', async (req, res) => {
+    if (!req.session.discordUser || !isHighTeamMember(req.session.discordUser)) {
+      return res.status(403).json({ ok: false, error: 'Kein Zugriff.' });
+    }
+    try {
+      const count = await deployCommands();
+      console.warn(`[web] Slash-Commands neu registriert von ${req.session.discordUser.username} via Webpanel.`);
+      res.json({ ok: true, count });
+    } catch (err) {
+      console.error('[web] Fehler beim Neu-Registrieren der Commands:', err);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post('/staff/deploy', async (req, res) => {
+    if (!req.session.discordUser || !isHighTeamMember(req.session.discordUser)) {
+      return res.status(403).json({ ok: false, error: 'Kein Zugriff.' });
+    }
+    const actor = req.session.discordUser.username;
+    let result;
+    try {
+      result = await runGitDeploy();
+    } catch (err) {
+      console.error('[web] Fehler beim Deploy (git pull):', err);
+      const errOutput = (err.stderr || err.message || '').toString();
+      if (config.logChannelId) {
+        const channel = await client.channels.fetch(config.logChannelId).catch(() => null);
+        if (channel?.isTextBased()) {
+          const embed = new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setTitle('🚀 Deploy fehlgeschlagen')
+            .addFields({ name: 'Von', value: `${actor} (Webpanel)`, inline: true })
+            .setDescription('```' + errOutput.slice(0, 1500) + '```')
+            .setTimestamp(new Date());
+          await channel.send({ embeds: [embed] }).catch(() => null);
+        }
+      }
+      return res.status(500).json({ ok: false, error: errOutput || 'Deploy fehlgeschlagen.' });
+    }
+
+    console.warn(`[web] Deploy (git pull) ausgeloest von ${actor} via Webpanel. Aenderungen: ${result.changed}.`);
+    if (config.logChannelId) {
+      const channel = await client.channels.fetch(config.logChannelId).catch(() => null);
+      if (channel?.isTextBased()) {
+        const embed = new EmbedBuilder()
+          .setColor(result.npmInstallError ? 0xe74c3c : result.changed ? 0xf1c40f : 0x3498db)
+          .setTitle('🚀 Deploy (git pull) ausgefuehrt')
+          .addFields(
+            { name: 'Von', value: `${actor} (Webpanel)`, inline: true },
+            {
+              name: 'Ergebnis',
+              value: !result.changed
+                ? 'Bereits aktuell'
+                : result.npmInstallError
+                ? 'Aenderungen geladen, npm install fehlgeschlagen - KEIN Neustart'
+                : 'Neue Aenderungen geladen, Bot startet neu ...',
+              inline: true,
+            }
+          )
+          .setDescription('```' + result.output.slice(0, 1500) + '```')
+          .setTimestamp(new Date());
+        await channel.send({ embeds: [embed] }).catch(() => null);
+      }
+    }
+
+    const restarting = result.changed && !result.npmInstallError;
+    res.json({ ok: true, ...result, restarting });
+    if (restarting) {
+      setTimeout(() => process.exit(0), 500);
+    }
+  });
+
+  app.post('/staff/restart', async (req, res) => {
+    if (!req.session.discordUser || !isHighTeamMember(req.session.discordUser)) {
+      return res.status(403).json({ ok: false, error: 'Kein Zugriff.' });
+    }
+    const actor = req.session.discordUser.username;
+    console.warn(`[web] Neustart angefordert von ${actor} via Webpanel.`);
+    if (config.logChannelId) {
+      const channel = await client.channels.fetch(config.logChannelId).catch(() => null);
+      if (channel?.isTextBased()) {
+        const embed = new EmbedBuilder()
+          .setColor(0xf1c40f)
+          .setTitle('♻️ Bot-Neustart angefordert')
+          .addFields({ name: 'Von', value: `${actor} (Webpanel)`, inline: true })
+          .setTimestamp(new Date());
+        await channel.send({ embeds: [embed] }).catch(() => null);
+      }
+    }
+    res.json({ ok: true });
+    // Antwort zuerst rausschicken, dann sauber beenden - pm2 (autorestart) startet den Prozess neu.
+    setTimeout(() => process.exit(0), 500);
   });
 
   app.post('/staff/exclude', async (req, res) => {

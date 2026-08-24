@@ -8,6 +8,7 @@ async function deployCommands() {
   console.log(`Registriere ${commands.length} Slash-Commands fuer Guild ${config.guildId} ...`);
   await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: commands });
   console.log('Slash-Commands erfolgreich registriert.');
+  return commands.length;
 }
 
 if (require.main === module) {
