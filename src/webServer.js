@@ -523,9 +523,9 @@ function renderLogPage(players, logins = [], excludedPlayers = []) {
           if (data.ok) {
             result.style.color = data.npmInstallError ? '#e74c3c' : '#6fe39b';
             let text = data.output || '(keine Ausgabe)';
-            if (data.npmInstallRan) text += '\n\nnpm install erfolgreich ausgefuehrt.';
-            if (data.npmInstallError) text += '\n\nnpm install fehlgeschlagen:\n' + data.npmInstallError + '\n\nBot wurde NICHT neugestartet.';
-            if (data.restarting) text += '\n\nBot startet neu, Seite laedt in Kuerze neu ...';
+            if (data.npmInstallRan) text += '\\n\\nnpm install erfolgreich ausgefuehrt.';
+            if (data.npmInstallError) text += '\\n\\nnpm install fehlgeschlagen:\\n' + data.npmInstallError + '\\n\\nBot wurde NICHT neugestartet.';
+            if (data.restarting) text += '\\n\\nBot startet neu, Seite laedt in Kuerze neu ...';
             result.textContent = text;
             if (data.restarting) setTimeout(() => location.reload(), 8000);
           } else {
